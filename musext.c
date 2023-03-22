@@ -40,28 +40,25 @@ static unsigned long long num_literals = 0;
 static unsigned num_vars = 0;
 static unsigned num_vertices = 0;
 static unsigned num_vertices_total = 0;
-static VarId *map_var = NULL;
+static int *map_var = NULL;
 static unsigned map_var_size = 0;
-static VertexId *map_c2v = NULL;
+static int *map_c2v = NULL;
 static unsigned map_c2v_size = 0;
 static char *var_lookup = NULL;
-static PType proof_type = PTYPE_UNDEF;
-static VertexId empty_vertex = 0;
+static int proof_type = 0;
+static int empty_vertex = 0;
 int global_offset=1;
 int debug_var=0;
 int return_code=0;
 
-static VarId max_var_index = 0;
+static int max_var_index = 0;
 
-char* org_filename="arbiter";
-
-static QRPReader reader =
+static QParser parser =
 {
     .line = 1,
     .col = 0,
-    .qrp_binary = 0,
-    .delim = QRP_DELIM,
-    .getch = get_non_ws_ch,
+    .delimiter= '0',
+    .get_cur_ch = get_non_ws_ch,
     .getnextch = stdin_getnextch,
     .getnum = qrp_read_num,
     .getlit = qrp_read_lit,
@@ -82,44 +79,44 @@ static Options options =
 static int
 get_non_ws_ch (void)
 {
-    while (isspace (reader.getnextch ()));
+    while (isspace (parser.getnextch ()));
 
-    return reader.ch;
+    return parser.ch;
 }
 
 static int
 stdin_getnextch (void)
 {
-    reader.ch = getc (stdin);
+    parser.ch = getc (stdin);
 
-    if (reader.ch == '\n')
+    if (parser.ch == '\n')
     {
-        reader.line += 1;
-        reader.col = 0;
+        parser.line += 1;
+        parser.col = 0;
     }
     else
-        reader.col += 1;
+        parser.col += 1;
 
-    return reader.ch;
+    return parser.ch;
 }
 
 static int
 mmap_getnextch (void)
 {
-    if (reader.mmap_pos == reader.mmap_size)
-        reader.ch = EOF;
+    if (parser.mmap_pos == parser.mmap_size)
+        parser.ch = EOF;
     else
-        reader.ch = (unsigned char) reader.mmap[reader.mmap_pos++];
+        parser.ch = (unsigned char) parser.mmap[parser.mmap_pos++];
 
-    if (reader.ch == '\n')
+    if (parser.ch == '\n')
     {
-        reader.line += 1;
-        reader.col = 0;
+        parser.line += 1;
+        parser.col = 0;
     }
     else
-        reader.col += 1;
+        parser.col += 1;
 
-    return reader.ch;
+    return parser.ch;
 }
 
 
@@ -127,50 +124,38 @@ mmap_getnextch (void)
 static unsigned
 qrp_read_num (void)
 {
-    if (!isdigit (reader.ch))
-        reader.getch ();
+    if (!isdigit (parser.ch))
+        parser.get_cur_ch ();
 
-    reader.num = 0;
+    parser.num = 0;
     do
     {
-        if (!isdigit (reader.ch))
-            PABORT (1, "digit expected");
-        reader.num = reader.num * 10 + (reader.ch - '0');
+        if (!isdigit (parser.ch)){
+           fprintf(stderr,"no digit");
+           abort();
+        }
+        parser.num = parser.num * 10 + (parser.ch - '0');
     }
-    while (!isspace (reader.getnextch ()) &&
-            (!reader.qrp_binary || reader.ch != BQRP_DELIM));
+    while (!isspace (parser.getnextch ()) &&
+            (!0 || parser.ch != 0));
 
-    return reader.num;
+    return parser.num;
 }
 
-static Lit
+static int
 qrp_read_lit (void)
 {
     int neg;
 
-    if (isspace (reader.ch))
-        reader.getch ();
+    if (isspace (parser.ch))
+        parser.get_cur_ch ();
 
-    neg = reader.ch == MINUS;
-    reader.getnum ();
-    reader.lit = neg ? -reader.num : reader.num;
-    return reader.lit;
+    neg = parser.ch == '-';
+    parser.getnum ();
+    parser.lit = neg ? -parser.num : parser.num;
+    return parser.lit;
 }
 
-static void
-cleanup (void)
-{
-
-    if (reader.mmap != NULL)
-        munmap (reader.mmap, reader.mmap_size);
-    if (out != NULL)
-        fclose (out);
-    if (vars != NULL)
-    {
-        free (vars);
-    }
-
-}
 
 
 
@@ -219,27 +204,23 @@ parse_options (int argc, char **argv, char *path, char* mmap_array)
 
         if (strcmp (str, "-o") == 0)
         {
-            ABORT (i + 1 >= argc, "missing file name for -o");
             if(i + 1 >= argc){
-
+                fprintf(stderr,"no -o filename given");
+                abort();
             }
             options.out_filename = argv[++i];
-            ABORT (options.out_filename[0] == '-',
-                   "missing file name for -o");
+            if(options.out_filename[0] == '-'){
+                fprintf(stderr,"no -o filename given");
+                abort();
+            }
             output_flag=1;
 
-        }
-        else if (strcmp (str, "-n") == 0)
-        {
-            ABORT (i + 1 >= argc, "missing file name for -n");
-            org_filename = argv[++i];
-            ABORT (org_filename[0] == '-',
-                   "missing file name for -n");
         }
 
         else if (str[0] == '-')
         {
-            ABORT (1, "invalid option '%s'", str);
+            fprintf(stderr, "no option given");
+            abort();
         }
         else
         {
@@ -248,17 +229,18 @@ parse_options (int argc, char **argv, char *path, char* mmap_array)
             options.in_filename=str;
 
             in_mmap_fd = open (str, O_RDONLY);
-            ABORT (in_mmap_fd == -1, "failed to open input file '%s'", str);
-            ABORT (fstat (in_mmap_fd, &s) == -1,
-                   "failed to get file status of '%s'", str);
-            reader.mmap_size = s.st_size;
-            reader.mmap = (char *) mmap (0, reader.mmap_size, PROT_READ,
+            if(in_mmap_fd==-1){
+                fprintf(stderr,"input file not opened");
+                abort();
+            }
+            fstat (in_mmap_fd, &s);
+            parser.mmap_size = s.st_size;
+            parser.mmap = (char *) mmap (0, parser.mmap_size, PROT_READ,
                                          MAP_PRIVATE | MAP_NORESERVE, in_mmap_fd, 0);
-            ABORT (reader.mmap == MAP_FAILED, "failed to mmap input file");
             close (in_mmap_fd);
 
-            reader.getnextch = mmap_getnextch;
-            reader.filename = str;
+            parser.getnextch = mmap_getnextch;
+            parser.filename = str;
         }
     }
 
@@ -367,7 +349,7 @@ static khiter_t k2;
 
 
 static void
-var_init (VarId id, QType type, int s_level)
+var_init (int id, int type, int s_level)
 {
 
     if (id > max_var_index)
@@ -379,23 +361,23 @@ var_init (VarId id, QType type, int s_level)
 
     if (num_vars + 1 >= vars_size)
     {
-        REALLOC (vars, vars_size + 1, vars_size, QTYPE_UNDEF);
+        REALLOC (vars, vars_size + 1, vars_size, 0);
         vars_size += 1;
     }
     assert (map_var[id] == 0);
 
-    VarId vid = ++num_vars;
+    int vid = ++num_vars;
     map_var[id] = vid;
     memset (vars + vid, 0, sizeof (Var_m));
 
     vars[vid].id = id;
     vars[vid].type = type;
     vars[vid].s_level = s_level;
-    vars[vid].val = BTYPE_UNDEF;
+    vars[vid].val = 0;
 }
 
-static VertexId
-vertex_init (VertexId id, int parsing_position)
+static int
+vertex_init (int id, int parsing_position)
 {
 
     assert (map_c2v != NULL);
@@ -408,7 +390,7 @@ vertex_init (VertexId id, int parsing_position)
     }
 
 
-    VertexId vid;
+    int vid;
     num_vertices++;
     vid = ++num_vertices_total;
 
@@ -438,7 +420,7 @@ vertex_init (VertexId id, int parsing_position)
     v.num_children=0;
     v.num_ants=0;
     REALLOC (v.children, v.children_size, 0, 0);
-    v.val = BTYPE_UNDEF;
+    v.val = 0;
 
     if(parsing_position!=2)
     {
@@ -455,7 +437,7 @@ vertex_init (VertexId id, int parsing_position)
 }
 
 khiter_t
-move_from_backup_to_active(khiter_t k_temp_aid, int parsing_position,VertexId aid,VertexId id)
+move_from_backup_to_active(khiter_t k_temp_aid, int parsing_position,int aid,int id)
 {
     unsigned old_size, new_size, pos;
     k_temp_aid=kh_get(khIntVer,cid_backup,aid);
@@ -467,8 +449,6 @@ move_from_backup_to_active(khiter_t k_temp_aid, int parsing_position,VertexId ai
     {
         kh_put(khInt,new_vertices,kh_key(cid_backup,k_temp_aid),&ret);
     }
-
-    int temp_id= kh_key(cid_backup,k_temp_aid);
 
     k_temp_aid=backup_iter;
 
@@ -520,7 +500,7 @@ move_from_backup_to_active(khiter_t k_temp_aid, int parsing_position,VertexId ai
 }
 
 static void
-vertex_add_antecedent (VertexId id, VertexId aid, int parsing_position)
+vertex_add_antecedent (int id, int aid, int parsing_position)
 {
     unsigned pos, new_size, old_size;
     khiter_t k_temp, k_temp_aid;
@@ -581,7 +561,7 @@ vertex_add_antecedent (VertexId id, VertexId aid, int parsing_position)
 }
 
 static void
-vertex_add_literal (VertexId vid, Lit lit, int parsing_position)
+vertex_add_literal (int vid, int lit, int parsing_position)
 {
 
     if(parsing_position!=2)
@@ -610,10 +590,10 @@ vertex_add_literal (VertexId vid, Lit lit, int parsing_position)
 
         kh_val(h,k_temp).num_lits += 1;
 
-        if (vars[abs (lit)].type == QTYPE_EXISTS &&
+        if (vars[abs (lit)].type == -1 &&
                 kh_val(h,k_temp).innermost_e < abs (lit))
             kh_val(h,k_temp).innermost_e = abs (lit);
-        else if (vars[abs (lit)].type == QTYPE_FORALL &&
+        else if (vars[abs (lit)].type == 1 &&
                  kh_val(h,k_temp).innermost_a < abs (lit))
             kh_val(h,k_temp).innermost_a = abs (lit);
     }
@@ -643,10 +623,10 @@ vertex_add_literal (VertexId vid, Lit lit, int parsing_position)
 
         kh_val(cid_backup,k_temp).num_lits += 1;
 
-        if (vars[abs (lit)].type == QTYPE_EXISTS &&
+        if (vars[abs (lit)].type == -1 &&
                 kh_val(cid_backup,k_temp).innermost_e < abs (lit))
             kh_val(cid_backup,k_temp).innermost_e = abs (lit);
-        else if (vars[abs (lit)].type == QTYPE_FORALL &&
+        else if (vars[abs (lit)].type == 1 &&
                  kh_val(cid_backup,k_temp).innermost_a < abs (lit))
             kh_val(cid_backup,k_temp).innermost_a = abs (lit);
     }
@@ -662,15 +642,13 @@ vertex_add_literal (VertexId vid, Lit lit, int parsing_position)
 static void
 parse_qrp (void)
 {
-    char *str;
-    unsigned i;
-    VertexId max_vertex_index;
+    int max_vertex_index;
 
     parse_preamble (&max_var_index, &max_vertex_index);
 
     REALLOC (map_var, max_var_index + 1, 0, 0);
     map_var_size = max_var_index + 1;
-    REALLOC (vars, max_var_index + 1, 0, QTYPE_UNDEF);
+    REALLOC (vars, max_var_index + 1, 0, 0);
     vars_size = max_var_index + 1;
     REALLOC (map_c2v, max_vertex_index + 1, 0, 0);
     map_c2v_size = max_vertex_index + 1;
@@ -679,36 +657,34 @@ parse_qrp (void)
     parse_qsets ();
     parse_vertices (0);
 
-    reader.getch = get_non_ws_ch;
+    parser.get_cur_ch = get_non_ws_ch;
 
     /* parse result line  */
-    if(reader.ch != QRP_RESULT)
+    if(parser.ch != QRP_RESULT)
     {
         fprintf(stderr,"I expected a result!");
         abort();
     };
 
-    if (tolower (reader.getch ()) == QRP_RESULT_S)
+    if (tolower (parser.get_cur_ch ()) == QRP_RESULT_S)
     {
-        str = QRP_RESULT_SAT;
-        proof_type = PTYPE_SAT;
+        proof_type = 1;
     }
-    else if (tolower (reader.ch) == QRP_RESULT_U)
+    else if (tolower (parser.ch) == QRP_RESULT_U)
     {
-        str = QRP_RESULT_UNSAT;
-        proof_type = PTYPE_UNSAT;
+        proof_type = 2;
     }
 
 
-    if (reader.mmap != NULL)
+    if (parser.mmap != NULL)
     {
-        munmap (reader.mmap, reader.mmap_size);
-        reader.mmap = NULL;
+        munmap (parser.mmap, parser.mmap_size);
+        parser.mmap = NULL;
     }
 }
 
 static void
-parse_preamble (VarId *max_var_index, VertexId *max_vertex_index)
+parse_preamble (int *max_var_index, int *max_vertex_index)
 {
     assert (max_var_index != NULL);
     assert (max_vertex_index != NULL);
@@ -716,21 +692,21 @@ parse_preamble (VarId *max_var_index, VertexId *max_vertex_index)
     char *str;
     unsigned i;
 
-    if(reader.getch () == EOF)
+    if(parser.get_cur_ch () == EOF)
     {
         fprintf(stderr,"Empty file give!");
         abort();
     };
 
     /* skip comments  */
-    while (reader.ch == QRP_COMMENT)
+    while (parser.ch == QRP_COMMENT)
     {
-        while (reader.getnextch () != '\n' && reader.ch != EOF);
-        reader.getch ();
+        while (parser.getnextch () != '\n' && parser.ch != EOF);
+        parser.get_cur_ch ();
     }
 
     /* preamble  */
-    if(reader.ch != QRP_PREAMBLE)
+    if(parser.ch != QRP_PREAMBLE)
     {
         fprintf(stderr,"Preamble missing");
         abort();
@@ -739,10 +715,10 @@ parse_preamble (VarId *max_var_index, VertexId *max_vertex_index)
     str = QRP_PREAMBLE_QRP;
     for (i = 0; str[i] != '\0'; i++)
     {
-        reader.getch ();
+        parser.get_cur_ch ();
     }
-    *max_var_index = reader.getnum ();
-    *max_vertex_index = reader.getnum ();
+    *max_var_index = parser.getnum ();
+    *max_vertex_index = parser.getnum ();
 
 }
 
@@ -750,50 +726,50 @@ static void
 parse_qsets (void)
 {
     unsigned s_level = 1;
-    QType type;
+    int type;
 
     quantifierStream = open_memstream(&quantifier_buffer, &quantifier_size);      //the trace output will be saved in the memstream
 
-    /* reader.ch contains either '\n' or BQRP_DELIM  */
+    /* parser.ch contains either '\n' or B'0' */
     for (;;)
     {
         /* check beginning of binary quantifiers set  */
-        if (reader.qrp_binary && reader.getch () != reader.delim)
+        if (0 && parser.get_cur_ch () != parser.delimiter)
             break;
 
         /* get quantifier symbol  */
-        reader.getch ();
-        if(reader.ch=='e'||reader.ch=='a')
+        parser.get_cur_ch ();
+        if(parser.ch=='e'||parser.ch=='a')
         {
-            fprintf(quantifierStream,"%c ",reader.ch);
+            fprintf(quantifierStream,"%c ",parser.ch);
         }
 
 
 
         if(return_code==20)
         {
-            if (reader.ch == QRP_FORALL)
-                type = QTYPE_FORALL;
-            else if (reader.ch == QRP_EXISTS)
-                type = QTYPE_EXISTS;
+            if (parser.ch == 'a')
+                type = 1;
+            else if (parser.ch == 'e')
+                type = -1;
             else
                 break;
         }
         else if(return_code==10)
         {
-            if (reader.ch == QRP_FORALL)
-                type = QTYPE_EXISTS;
-            else if (reader.ch == QRP_EXISTS)
-                type = QTYPE_FORALL;
+            if (parser.ch == 'a')
+                type = -1;
+            else if (parser.ch == 'e')
+                type = 1;
             else
                 break;
         }
 
-        /* reader.ch contains QRP_FORALL or QRP_EXISTS  */
+        /* parser.ch contains 'a' or 'e'  */
         /* parse variables in quantifier set  */
-        while (reader.getch () != reader.delim)
+        while (parser.get_cur_ch () != parser.delimiter)
         {
-            int newlit=reader.getnum();
+            int newlit=parser.getnum();
             fprintf(quantifierStream,"%d ",newlit);
             var_init (newlit, type, s_level);
         }
@@ -807,7 +783,7 @@ parse_qsets (void)
     /* no quantifier set parsed  */
     if(s_level==1)
     {
-        printf(stderr,"We have no quantifier set");
+        fprintf(stderr,"We have no quantifier set");
         abort();
     }
 }
@@ -817,7 +793,7 @@ parse_vertices (int parsing_position)
 {
 
 
-    VertexId vid, aid;
+    int vid, aid;
 
     if(parsing_position!=1&&parsing_position!=2)
     {
@@ -828,10 +804,10 @@ parse_vertices (int parsing_position)
 
 
 
-    /* reader.ch contains first digit of first vertex id  */
+    /* parser.ch contains first digit of first vertex id  */
     for (;;)
     {
-        long temp_vid=reader.getnum ();
+        long temp_vid=parser.getnum ();
 
 
 
@@ -850,18 +826,18 @@ parse_vertices (int parsing_position)
         memset (var_lookup, 0, (num_vars + 1) * sizeof (char));
 
         /* parse literals  */
-        /* reader.ch contains either a whitespace or last digit of vid  */
+        /* parser.ch contains either a whitespace or last digit of vid  */
         for (;;)
         {
-            if (reader.getch () == reader.delim)
+            if (parser.get_cur_ch () == parser.delimiter)
                 break;
 
-            reader.getlit ();
+            parser.getlit ();
 
 
             if(parsing_position==1||parsing_position==2)
             {
-                if(reader.num > (unsigned) max_var_index)
+                if(parser.num > (unsigned) max_var_index)
                 {
                     continue;
                 }
@@ -869,21 +845,21 @@ parse_vertices (int parsing_position)
 
 
 
-            if (var_lookup[map_var[abs (reader.lit)]] == 1)
+            if (var_lookup[map_var[abs (parser.lit)]] == 1)
                 continue;
 
-            var_lookup[map_var[abs (reader.lit)]] = 1;
+            var_lookup[map_var[abs (parser.lit)]] = 1;
 
 
             if(return_code==20)
             {
-                vertex_add_literal (vid, reader.lit < 0 ? -map_var[-reader.lit]
-                                    : map_var[reader.lit],parsing_position);
+                vertex_add_literal (vid, parser.lit < 0 ? -map_var[-parser.lit]
+                                    : map_var[parser.lit],parsing_position);
             }
             else if(return_code==10)
             {
-                vertex_add_literal (vid, reader.lit < 0 ? map_var[-reader.lit]
-                                    : -map_var[reader.lit],parsing_position);
+                vertex_add_literal (vid, parser.lit < 0 ? map_var[-parser.lit]
+                                    : -map_var[parser.lit],parsing_position);
             }
 
 
@@ -920,13 +896,13 @@ parse_vertices (int parsing_position)
 
 
         /* parse antecedents  */
-        /* reader.ch contains reader.delim  */
+        /* parser.ch contains parser.delimiter  */
         for (;;)
         {
-            if (reader.getch () == reader.delim)
+            if (parser.get_cur_ch () == parser.delimiter)
                 break;
 
-            aid=reader.getnum();
+            aid=parser.getnum();
 
 
             if(parsing_position==1||parsing_position==2)
@@ -940,12 +916,14 @@ parse_vertices (int parsing_position)
             {
                 if(kh_val(h,kh_get(khIntVer, h, vid)).num_ants >= 2){
                     fprintf(stderr,"wrong number of ants given");
+                    abort();
                 }
             }
             else
             {
                 if(kh_val(cid_backup,kh_get(khIntVer, cid_backup, vid)).num_ants >= 2){
                     fprintf(stderr,"wrong number of ants given");
+                    abort();
                 }
             }
 
@@ -970,16 +948,16 @@ parse_vertices (int parsing_position)
         }
 
 
-        /* reader.ch contains reader.delim  */
-        reader.getch ();
+        /* parser.ch contains parser.delimiter  */
+        parser.get_cur_ch ();
 
-        if ((!reader.qrp_binary && reader.ch == QRP_RESULT) || reader.ch == EOF)
+        if ((!0 && parser.ch == QRP_RESULT) || parser.ch == EOF)
             break;
 
         /* check for binary result statement  */
-        if (reader.qrp_binary && reader.ch == reader.delim)
+        if (0 && parser.ch == parser.delimiter)
         {
-            if (reader.getch () == QRP_RESULT || reader.ch == EOF)
+            if (parser.get_cur_ch () == QRP_RESULT || parser.ch == EOF)
                 break;
         }
     }
@@ -1054,8 +1032,6 @@ int main(int argc, char **argv)
 
     //parse the inputs given to the programm
 
-    clock_t t;
-    t = clock();
 
     parse_options(argc,argv,NULL,NULL);
 
@@ -1105,13 +1081,11 @@ int main(int argc, char **argv)
 
     }
     fclose(myStream);
-    reader.mmap=buffer_mcreturn;
-    reader.mmap_size=bufferSize_mcreturn;
-    reader.getnextch = mmap_getnextch;
+    parser.mmap=buffer_mcreturn;
+    parser.mmap_size=bufferSize_mcreturn;
+    parser.getnextch = mmap_getnextch;
 
 
-    t = clock() - t;
-    double time_taken = ((double)t)/CLOCKS_PER_SEC; // in seconds
 
 
     parse_qrp ();
@@ -1247,7 +1221,7 @@ int main(int argc, char **argv)
     //parse all variables with the according quantifiers
     for(i=1; i<=num_vars; i++)
     {
-        if (vars[i].type==QTYPE_FORALL)
+        if (vars[i].type==1)
         {
             scope_type = QDPLL_QTYPE_FORALL;
         }
@@ -1284,7 +1258,7 @@ int main(int argc, char **argv)
                 qdpll_add(qdpll,temp_lit);
 
             }
-            qdpll_add(qdpll,0);                                                     //delimit the current clause
+            qdpll_add(qdpll,0);                                                     //delimiterit the current clause
 
             //add the new clause to the internal vertices clausegroup array map; We do not need to add +1 here as we are refering to the clausegroup array
             khiter_t  k_tempiter2;
@@ -1371,7 +1345,6 @@ int main(int argc, char **argv)
 
             char *buffer; //for open_memstream
             size_t size;
-            int stdout_copy;
             FILE * stdsave=stdout;
 
             FILE * memstream = open_memstream(&buffer, &size);      //the trace output will be saved in the memstream
@@ -1392,10 +1365,10 @@ int main(int argc, char **argv)
 
 
 
-            //set the source of reader to the newly created buffer array in order to parse the vertex output
-            reader.mmap_size = (int) size;
-            reader.mmap = buffer;
-            reader.mmap_pos = 0;
+            //set the source of parser to the newly created buffer array in order to parse the vertex output
+            parser.mmap_size = (int) size;
+            parser.mmap = buffer;
+            parser.mmap_pos = 0;
 
             //save trace in case vertex is reused, this is important as the solver also takes these ids into consideration when giving out new ids
             if(res==10)
@@ -1527,7 +1500,6 @@ int main(int argc, char **argv)
                             //reroute the stdout again (as before), we need to know the clause id for the solver for our hash map
                             char *buffer2; //for open_memstream
                             size_t size2;
-                            int stdout_copy2;
                             FILE* stdsave2=stdout;
                             FILE * memstream2 = open_memstream(&buffer2, &size2);
                             stdout=memstream2;
@@ -1550,14 +1522,14 @@ int main(int argc, char **argv)
 
 
 
-                            //set the source of the reader
-                            reader.mmap_size = (int) size2;
-                            reader.mmap = buffer2;
-                            reader.mmap_pos = 0;
+                            //set the source of the parser
+                            parser.mmap_size = (int) size2;
+                            parser.mmap = buffer2;
+                            parser.mmap_pos = 0;
 
 
                             //read the solver instance clause id
-                            int cid = reader.getnum();
+                            int cid = parser.getnum();
 
 
                             //sometimes the solver does optimizations so it gives back more than one new clause id
@@ -1685,13 +1657,13 @@ int main(int argc, char **argv)
                     int temp_lit3;
                     khiter_t zwischenschritt=kh_get(khIntInt,map_id_ants_output,temp_lit2);
                     temp_lit3=kh_value(map_id_ants_output,zwischenschritt);
-                    fprintf(outstream,"%ld ",temp_lit3);
+                    fprintf(outstream,"%d ",temp_lit3);
                 }
                 fprintf(outstream,"0\n");
 
             }
         }
-        if(proof_type == PTYPE_UNSAT)
+        if(proof_type == 2)
         {
             fprintf(outstream,"r UNSAT");
         }
