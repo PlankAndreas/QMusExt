@@ -40,7 +40,6 @@ static unsigned long long num_literals = 0;
 static unsigned num_vars = 0;
 static unsigned num_vertices = 0;
 static unsigned num_vertices_total = 0;
-static unsigned num_vertices_compact = 0;
 static VarId *map_var = NULL;
 static unsigned map_var_size = 0;
 static VertexId *map_c2v = NULL;
@@ -73,15 +72,8 @@ static QRPReader reader =
 };
 
 /* QRPcert default options  */
-static QRPCertOptions options =
+static Options options =
 {
-    .print_rfao = 0,
-    .statistics = 0,
-    .simplify = 0,
-    .extract = 0,
-    .incr_size = 0,
-    .qrp=0,
-    .aiger_binary = 1,
     .out_filename = NULL,
     .in_filename = NULL
 };
@@ -130,43 +122,7 @@ mmap_getnextch (void)
     return reader.ch;
 }
 
-static unsigned
-bqrp_read_num (void)
-{
-    unsigned i = 0;
 
-    if (reader.ch == reader.delim)
-        reader.getch ();
-
-    reader.num = 0;
-    for (;;)
-    {
-        QRPCERT_PABORT (reader.ch == EOF, "unexpected EOF");
-        if (!(reader.ch & 0x80))
-            break;
-
-        reader.num |= (reader.ch & 0x7f) << (7 * i++);
-        reader.getch ();
-    }
-
-    reader.num = reader.num | (reader.ch << (7 * i));
-    return reader.num;
-}
-
-static Lit
-bqrp_read_lit (void)
-{
-    reader.getnum ();
-
-    if (reader.num & 1)
-        reader.lit = -(reader.num >> 1);
-    else
-        reader.lit = reader.num >> 1;
-
-    reader.num = reader.num >> 1;
-
-    return reader.lit;
-}
 
 static unsigned
 qrp_read_num (void)
@@ -178,7 +134,7 @@ qrp_read_num (void)
     do
     {
         if (!isdigit (reader.ch))
-            QRPCERT_PABORT (1, "digit expected");
+            PABORT (1, "digit expected");
         reader.num = reader.num * 10 + (reader.ch - '0');
     }
     while (!isspace (reader.getnextch ()) &&
@@ -263,61 +219,27 @@ parse_options (int argc, char **argv, char *path, char* mmap_array)
 
         if (strcmp (str, "-o") == 0)
         {
-            QRPCERT_ABORT (i + 1 >= argc, "missing file name for -o");
+            ABORT (i + 1 >= argc, "missing file name for -o");
+            if(i + 1 >= argc){
+
+            }
             options.out_filename = argv[++i];
-            QRPCERT_ABORT (options.out_filename[0] == '-',
-                           "missing file name for -o");
+            ABORT (options.out_filename[0] == '-',
+                   "missing file name for -o");
             output_flag=1;
 
         }
-        else if (strcmp (str, "-m") == 0)
-        {
-            options.qrp = 1;
-        }
-        else if (strcmp (str, "-p") == 0 || strcmp (str, "--print-rfao") == 0)
-        {
-            options.print_rfao += 1;
-        }
         else if (strcmp (str, "-n") == 0)
         {
-            QRPCERT_ABORT (i + 1 >= argc, "missing file name for -n");
+            ABORT (i + 1 >= argc, "missing file name for -n");
             org_filename = argv[++i];
-            QRPCERT_ABORT (org_filename[0] == '-',
-                           "missing file name for -n");
+            ABORT (org_filename[0] == '-',
+                   "missing file name for -n");
         }
 
-        else if (strcmp (str, "-i") == 0)
-        {
-            QRPCERT_ABORT (i + 1 >= argc, "missing value for -i");
-            QRPCERT_ABORT (argv[++i][0] == '-', "missing value for -i");
-            str = argv[i];
-            unsigned len = strlen (str);
-
-            if (tolower (str[len - 1]) == 'm')
-            {
-                str[len - 1] = '\0';
-                options.incr_size = (unsigned) atoi (str) * 1024 * 1024;
-            }
-            else if (tolower (str[len - 1]) == 'g')
-            {
-                str[len - 1] = '\0';
-                options.incr_size = (unsigned) atoi (str) * 1024 * 1024 * 1024;
-            }
-            else
-                QRPCERT_ABORT (1, "invalid unit '%c' for -i given", str[len - 1]);
-        }
-
-        else if (strcmp (str, "--simplify") == 0)
-        {
-            options.simplify = 1;
-        }
-        else if (strcmp (str, "--aiger-ascii") == 0)
-        {
-            options.aiger_binary = 0;
-        }
         else if (str[0] == '-')
         {
-            QRPCERT_ABORT (1, "invalid option '%s'", str);
+            ABORT (1, "invalid option '%s'", str);
         }
         else
         {
@@ -326,13 +248,13 @@ parse_options (int argc, char **argv, char *path, char* mmap_array)
             options.in_filename=str;
 
             in_mmap_fd = open (str, O_RDONLY);
-            QRPCERT_ABORT (in_mmap_fd == -1, "failed to open input file '%s'", str);
-            QRPCERT_ABORT (fstat (in_mmap_fd, &s) == -1,
-                           "failed to get file status of '%s'", str);
+            ABORT (in_mmap_fd == -1, "failed to open input file '%s'", str);
+            ABORT (fstat (in_mmap_fd, &s) == -1,
+                   "failed to get file status of '%s'", str);
             reader.mmap_size = s.st_size;
             reader.mmap = (char *) mmap (0, reader.mmap_size, PROT_READ,
                                          MAP_PRIVATE | MAP_NORESERVE, in_mmap_fd, 0);
-            QRPCERT_ABORT (reader.mmap == MAP_FAILED, "failed to mmap input file");
+            ABORT (reader.mmap == MAP_FAILED, "failed to mmap input file");
             close (in_mmap_fd);
 
             reader.getnextch = mmap_getnextch;
@@ -343,13 +265,6 @@ parse_options (int argc, char **argv, char *path, char* mmap_array)
 
 
 
-
-
-
-    QRPCERT_ABORT (options.out_filename == NULL && options.incr_size > 0,
-                   "inremental write mode is only available with option -o");
-    QRPCERT_ABORT (options.incr_size > 0 && options.aiger_binary,
-                   "incremental write mode only available with --ascii-aiger");
 }
 
 //------------Hash Functionalities ------------------//
@@ -448,91 +363,6 @@ static khiter_t k2;
 
 //------------Parse Functions -------------------//
 
-static void
-print_vertex (Vertex* v, VertexId vid)
-{
-
-
-    char is_neg = 0;
-    unsigned i, num_lits;
-    Lit lit;
-
-    if (options.print_rfao == 1)
-    {
-        fprintf (stderr, "%d ", (vid < 0) ? -v->id : v->id);
-        return;
-    }
-
-    if (vid < 0)
-    {
-        vid = -vid;
-        is_neg = 1;
-    }
-
-
-    num_lits = v->num_lits;
-
-    if (abs (v->lits[num_lits]) == GET_INNERMOST_VAR(vid))
-        num_lits += 1;
-    if (is_neg)
-        fprintf (stdout, "-");
-    fprintf (stdout, "( ");
-
-    if (num_lits == 0)
-        fprintf (stdout, "%d ", (proof_type == PTYPE_SAT) ? 1 : 0);
-
-    for (i = 0; i < num_lits; i++)
-    {
-        lit = v->lits[i];
-        assert (vars[abs (lit)].val == BTYPE_UNDEF);
-        fprintf (stdout, "%c(%d) ",
-                 (vars[abs (lit)].type == QTYPE_EXISTS) ? 'E' : 'A',
-                 (lit < 0) ? -vars[-lit].id : vars[lit].id);
-    }
-
-    fprintf (stdout, ") ");
-
-
-
-}
-
-
-static void
-print_parsed_formula()
-{
-
-
-    unsigned k;
-    unsigned l;
-
-
-
-
-
-    for (k = kh_begin(h); k != kh_end(h); ++k)
-    {
-        if (kh_exist(h, k))
-        {
-            Vertex vert = kh_value(h, k);
-
-            printf("VerticesNo: %d \n", vert.id);
-            print_vertex(&vert, vert.id);
-            printf("\n");
-            for(l=0; l<vert.num_ants; l++)
-            {
-                printf("  Ants: %d \n", vert.ants[l]);
-            }
-            for(l=0; l<vert.num_children; l++)
-            {
-                printf("  Child: %d \n", vert.children[l]);
-            }
-            printf("--------------- \n");
-        }
-    }
-
-
-
-}
 
 
 
@@ -542,14 +372,14 @@ var_init (VarId id, QType type, int s_level)
 
     if (id > max_var_index)
     {
-        QRPCERT_REALLOC (map_var, id + 1, map_var_size, 0);
+        REALLOC (map_var, id + 1, map_var_size, 0);
         map_var_size = id + 1;
         max_var_index = id;
     }
 
     if (num_vars + 1 >= vars_size)
     {
-        QRPCERT_REALLOC (vars, vars_size + 1, vars_size, QTYPE_UNDEF);
+        REALLOC (vars, vars_size + 1, vars_size, QTYPE_UNDEF);
         vars_size += 1;
     }
     assert (map_var[id] == 0);
@@ -565,7 +395,7 @@ var_init (VarId id, QType type, int s_level)
 }
 
 static VertexId
-vertex_init (VertexId id, int skipmode)
+vertex_init (VertexId id, int parsing_position)
 {
 
     assert (map_c2v != NULL);
@@ -573,7 +403,7 @@ vertex_init (VertexId id, int skipmode)
 
     if ((unsigned) id >= map_c2v_size)
     {
-        QRPCERT_REALLOC (map_c2v, id * 1.5 + 1, map_c2v_size, 0);
+        REALLOC (map_c2v, id * 1.5 + 1, map_c2v_size, 0);
         map_c2v_size = id * 1.5;
     }
 
@@ -583,7 +413,7 @@ vertex_init (VertexId id, int skipmode)
     vid = ++num_vertices_total;
 
     map_c2v[id] = vid;
-    if(skipmode==1||skipmode==2)
+    if(parsing_position==1||parsing_position==2)
     {
         khiter_t temp_iterator;
         temp_iterator = kh_put(khIntInt,map_cid_ver,id,&ret);
@@ -603,14 +433,14 @@ vertex_init (VertexId id, int skipmode)
 
 
 
-    QRPCERT_REALLOC (v.lits, v.lits_size, 0, 0);
+    REALLOC (v.lits, v.lits_size, 0, 0);
     v.children_size = 4;
     v.num_children=0;
     v.num_ants=0;
-    QRPCERT_REALLOC (v.children, v.children_size, 0, 0);
+    REALLOC (v.children, v.children_size, 0, 0);
     v.val = BTYPE_UNDEF;
 
-    if(skipmode!=2)
+    if(parsing_position!=2)
     {
         k1 = kh_put(khIntVer, h, vid, &ret);
         kh_value(h, k1)=v;
@@ -625,7 +455,7 @@ vertex_init (VertexId id, int skipmode)
 }
 
 khiter_t
-move_from_backup_to_active(khiter_t k_temp_aid, int skipmode,VertexId aid,VertexId id)
+move_from_backup_to_active(khiter_t k_temp_aid, int parsing_position,VertexId aid,VertexId id)
 {
     unsigned old_size, new_size, pos;
     k_temp_aid=kh_get(khIntVer,cid_backup,aid);
@@ -633,7 +463,7 @@ move_from_backup_to_active(khiter_t k_temp_aid, int skipmode,VertexId aid,Vertex
     backup_iter=kh_put(khIntVer,h,kh_key(cid_backup,k_temp_aid),&ret);
     kh_value(h,backup_iter)=kh_value(cid_backup,k_temp_aid);
 
-    if(skipmode==2)
+    if(parsing_position==2)
     {
         kh_put(khInt,new_vertices,kh_key(cid_backup,k_temp_aid),&ret);
     }
@@ -648,7 +478,7 @@ move_from_backup_to_active(khiter_t k_temp_aid, int skipmode,VertexId aid,Vertex
     {
         old_size = kh_val(h,k_temp_aid).children_size;
         new_size = old_size + (old_size >> 2) + 1;
-        QRPCERT_REALLOC (kh_val(h,k_temp_aid).children, new_size, old_size, 0);
+        REALLOC (kh_val(h,k_temp_aid).children, new_size, old_size, 0);
         kh_val(h,k_temp_aid).children_size = new_size;
     }
 
@@ -664,7 +494,7 @@ move_from_backup_to_active(khiter_t k_temp_aid, int skipmode,VertexId aid,Vertex
     {
         old_size = kh_val(h,k_temp_aid).children_size;
         new_size = old_size + (old_size >> 2) + 1;
-        QRPCERT_REALLOC (kh_val(h,k_temp_aid).children, new_size, old_size, 0);
+        REALLOC (kh_val(h,k_temp_aid).children, new_size, old_size, 0);
         kh_val(h,k_temp_aid).children_size = new_size;
     }
 
@@ -682,7 +512,7 @@ move_from_backup_to_active(khiter_t k_temp_aid, int skipmode,VertexId aid,Vertex
         k_temp_aid_2 = kh_get(khIntVer, h, aid);
         if(k_temp_aid_2==kh_end(h))
         {
-            move_from_backup_to_active(k_temp_aid_2, skipmode,aid,id);
+            move_from_backup_to_active(k_temp_aid_2, parsing_position,aid,id);
         }
     }
 
@@ -690,12 +520,12 @@ move_from_backup_to_active(khiter_t k_temp_aid, int skipmode,VertexId aid,Vertex
 }
 
 static void
-vertex_add_antecedent (VertexId id, VertexId aid, int skipmode)
+vertex_add_antecedent (VertexId id, VertexId aid, int parsing_position)
 {
     unsigned pos, new_size, old_size;
     khiter_t k_temp, k_temp_aid;
 
-    if(skipmode!=2)
+    if(parsing_position!=2)
     {
         k_temp = kh_get(khIntVer, h, id);
 
@@ -710,7 +540,7 @@ vertex_add_antecedent (VertexId id, VertexId aid, int skipmode)
         {
             //check if we have already parsed the vertex, we did not need before. If so we have to transfer it from the backup to  the real hash map
             //the setting of the ants is then done by the move function.
-            k_temp_aid=move_from_backup_to_active(k_temp_aid, skipmode,aid,id);
+            k_temp_aid=move_from_backup_to_active(k_temp_aid, parsing_position,aid,id);
             return;
 
 
@@ -723,7 +553,7 @@ vertex_add_antecedent (VertexId id, VertexId aid, int skipmode)
         {
             old_size = kh_val(h,k_temp_aid).children_size;
             new_size = old_size + (old_size >> 2) + 1;
-            QRPCERT_REALLOC (kh_val(h,k_temp_aid).children, new_size, old_size, 0);
+            REALLOC (kh_val(h,k_temp_aid).children, new_size, old_size, 0);
             kh_val(h,k_temp_aid).children_size = new_size;
         }
 
@@ -751,10 +581,10 @@ vertex_add_antecedent (VertexId id, VertexId aid, int skipmode)
 }
 
 static void
-vertex_add_literal (VertexId vid, Lit lit, int skipmode)
+vertex_add_literal (VertexId vid, Lit lit, int parsing_position)
 {
 
-    if(skipmode!=2)
+    if(parsing_position!=2)
     {
         unsigned pos, new_size, old_size;
 
@@ -768,7 +598,7 @@ vertex_add_literal (VertexId vid, Lit lit, int skipmode)
         {
             old_size = kh_val(h,k_temp).lits_size;
             new_size = old_size + (old_size >> 2);
-            QRPCERT_REALLOC (kh_val(h,k_temp).lits, new_size, old_size, 0);
+            REALLOC (kh_val(h,k_temp).lits, new_size, old_size, 0);
             kh_val(h,k_temp).lits_size = new_size;
         }
 
@@ -801,7 +631,7 @@ vertex_add_literal (VertexId vid, Lit lit, int skipmode)
         {
             old_size = kh_val(cid_backup,k_temp).lits_size;
             new_size = old_size + (old_size >> 2);
-            QRPCERT_REALLOC (kh_val(cid_backup,k_temp).lits, new_size, old_size, 0);
+            REALLOC (kh_val(cid_backup,k_temp).lits, new_size, old_size, 0);
             kh_val(cid_backup,k_temp).lits_size = new_size;
         }
 
@@ -838,22 +668,25 @@ parse_qrp (void)
 
     parse_preamble (&max_var_index, &max_vertex_index);
 
-    QRPCERT_REALLOC (map_var, max_var_index + 1, 0, 0);
+    REALLOC (map_var, max_var_index + 1, 0, 0);
     map_var_size = max_var_index + 1;
-    QRPCERT_REALLOC (vars, max_var_index + 1, 0, QTYPE_UNDEF);
+    REALLOC (vars, max_var_index + 1, 0, QTYPE_UNDEF);
     vars_size = max_var_index + 1;
-    QRPCERT_REALLOC (map_c2v, max_vertex_index + 1, 0, 0);
+    REALLOC (map_c2v, max_vertex_index + 1, 0, 0);
     map_c2v_size = max_vertex_index + 1;
     vertices_size = max_vertex_index + 1;
 
     parse_qsets ();
     parse_vertices (0);
-    num_vertices_compact = num_vertices;  /* set in case abort cleanup  */
 
     reader.getch = get_non_ws_ch;
 
     /* parse result line  */
-    QRPCERT_PABORT (reader.ch != QRP_RESULT, "result line expected");
+    if(reader.ch != QRP_RESULT)
+    {
+        fprintf(stderr,"I expected a result!");
+        abort();
+    };
 
     if (tolower (reader.getch ()) == QRP_RESULT_S)
     {
@@ -864,14 +697,6 @@ parse_qrp (void)
     {
         str = QRP_RESULT_UNSAT;
         proof_type = PTYPE_UNSAT;
-    }
-    else
-        QRPCERT_PABORT (1, "invalid result statement '%d'", reader.ch);
-
-    for (i = 1; str[i] != '\0'; i++)
-    {
-        QRPCERT_PABORT (tolower (reader.getch ()) != str[i],
-                        "invalid result statement, '%s' expected", str);
     }
 
 
@@ -891,7 +716,11 @@ parse_preamble (VarId *max_var_index, VertexId *max_vertex_index)
     char *str;
     unsigned i;
 
-    QRPCERT_PABORT (reader.getch () == EOF, "empty file given");
+    if(reader.getch () == EOF)
+    {
+        fprintf(stderr,"Empty file give!");
+        abort();
+    };
 
     /* skip comments  */
     while (reader.ch == QRP_COMMENT)
@@ -901,30 +730,20 @@ parse_preamble (VarId *max_var_index, VertexId *max_vertex_index)
     }
 
     /* preamble  */
-    QRPCERT_PABORT (reader.ch != QRP_PREAMBLE, "missing preamble");
+    if(reader.ch != QRP_PREAMBLE)
+    {
+        fprintf(stderr,"Preamble missing");
+        abort();
+    };
 
     str = QRP_PREAMBLE_QRP;
     for (i = 0; str[i] != '\0'; i++)
     {
         reader.getch ();
-        if (i == 0 && reader.ch != str[i])
-        {
-            reader.qrp_binary = 1;
-            str = QRP_PREAMBLE_BQRP;
-        }
-        QRPCERT_PABORT (reader.ch != str[i],
-                        "invalid preamble, '%s' expected", str);
     }
     *max_var_index = reader.getnum ();
     *max_vertex_index = reader.getnum ();
 
-    if (reader.qrp_binary)
-    {
-        reader.delim = BQRP_DELIM;
-        reader.getch = reader.getnextch;  /* do not skip whitespaces  */
-        reader.getnum = bqrp_read_num;
-        reader.getlit = bqrp_read_lit;
-    }
 }
 
 static void
@@ -944,7 +763,8 @@ parse_qsets (void)
 
         /* get quantifier symbol  */
         reader.getch ();
-        if(reader.ch=='e'||reader.ch=='a'){
+        if(reader.ch=='e'||reader.ch=='a')
+        {
             fprintf(quantifierStream,"%c ",reader.ch);
         }
 
@@ -956,8 +776,6 @@ parse_qsets (void)
                 type = QTYPE_FORALL;
             else if (reader.ch == QRP_EXISTS)
                 type = QTYPE_EXISTS;
-            else if (reader.qrp_binary)
-                QRPCERT_PABORT (1,"quantifier set expected");
             else
                 break;
         }
@@ -967,8 +785,6 @@ parse_qsets (void)
                 type = QTYPE_EXISTS;
             else if (reader.ch == QRP_EXISTS)
                 type = QTYPE_FORALL;
-            else if (reader.qrp_binary)
-                QRPCERT_PABORT (1,"quantifier set expected");
             else
                 break;
         }
@@ -989,22 +805,24 @@ parse_qsets (void)
     fclose(quantifierStream);
 
     /* no quantifier set parsed  */
-    QRPCERT_PABORT (s_level == 1, "quantifier set expected");
+    if(s_level==1)
+    {
+        printf(stderr,"We have no quantifier set");
+        abort();
+    }
 }
 
 static void
-parse_vertices (int skipmode)
+parse_vertices (int parsing_position)
 {
 
 
     VertexId vid, aid;
 
-    QRPCERT_PABORT (reader.ch == BQRP_DELIM, "no vertices given");
-
-    if(skipmode!=1&&skipmode!=2)
+    if(parsing_position!=1&&parsing_position!=2)
     {
         assert (var_lookup == NULL);
-        QRPCERT_REALLOC (var_lookup, num_vars + 1, 0, 0);
+        REALLOC (var_lookup, num_vars + 1, 0, 0);
     }
 
 
@@ -1018,25 +836,15 @@ parse_vertices (int skipmode)
 
 
 
-        vid = vertex_init (temp_vid, skipmode);
+        vid = vertex_init (temp_vid, parsing_position);
 
 
-        if(skipmode==1)
+        if(parsing_position==1)
         {
             kh_put(khInt,new_vertices,vid,&ret);
         }
 
 
-        if(skipmode!=2)
-        {
-            QRPCERT_PABORT (kh_val(h,kh_get(khIntVer, h, vid)).num_lits != 0, "duplicate step index '%d'",
-                            reader.num);
-        }
-        else
-        {
-            QRPCERT_PABORT (kh_val(cid_backup,kh_get(khIntVer, cid_backup, vid)).num_lits != 0, "duplicate step index '%d'",
-                            reader.num);
-        }
 
 
         memset (var_lookup, 0, (num_vars + 1) * sizeof (char));
@@ -1051,25 +859,14 @@ parse_vertices (int skipmode)
             reader.getlit ();
 
 
-            if(skipmode==1||skipmode==2)
+            if(parsing_position==1||parsing_position==2)
             {
                 if(reader.num > (unsigned) max_var_index)
                 {
-                    //QRPCERT_ABORT(reader.num > (unsigned) max_var_index,"reader nummer %d > max var index%d\n",reader.num,max_var_index);
                     continue;
                 }
             }
 
-            if(skipmode!=2)
-            {
-                QRPCERT_PABORT (reader.num > (unsigned) max_var_index,
-                                "invalid literal '%d' in step '%d' with skidpmode '%d'",
-                                reader.lit, kh_val(h,kh_get(khIntVer, h, vid)).id,skipmode);
-
-                QRPCERT_PABORT (vars[map_var[reader.num]].type == QTYPE_UNDEF,
-                                "free variable '%d' in step '%d' with skipmode '%d' and solver_vid %d", reader.num,
-                                kh_val(h,kh_get(khIntVer, h, vid)).id,skipmode,temp_vid);
-            }
 
 
             if (var_lookup[map_var[abs (reader.lit)]] == 1)
@@ -1081,12 +878,12 @@ parse_vertices (int skipmode)
             if(return_code==20)
             {
                 vertex_add_literal (vid, reader.lit < 0 ? -map_var[-reader.lit]
-                                    : map_var[reader.lit],skipmode);
+                                    : map_var[reader.lit],parsing_position);
             }
             else if(return_code==10)
             {
                 vertex_add_literal (vid, reader.lit < 0 ? map_var[-reader.lit]
-                                    : -map_var[reader.lit],skipmode);
+                                    : -map_var[reader.lit],parsing_position);
             }
 
 
@@ -1095,7 +892,7 @@ parse_vertices (int skipmode)
 
         khiter_t k_ret;
         Vertex v_lookup;
-        if(skipmode!=2)
+        if(parsing_position!=2)
         {
             k_ret = kh_get(khIntVer, h, vid);
             v_lookup = kh_val(h, k_ret);
@@ -1106,21 +903,13 @@ parse_vertices (int skipmode)
             v_lookup = kh_val(cid_backup, k_ret);
         }
 
-        k2 = kh_get(khVerInt, h_lookup, v_lookup); // get the ieterator
-        if (k2 != kh_end(h_lookup))    // if it is found
+        k2 = kh_get(khVerInt, h_lookup, v_lookup); // get the iterator
+        if(parsing_position!=2)
         {
-            //kh_del(khIntVer, h, k_ret);  // then delete it.
-            //kh_del(khVerInt, h_lookup, k2);
+            k2 = kh_put(khVerInt, h_lookup, v_lookup, &ret);
+            kh_value(h_lookup, k2)=vid;
         }
-        else
-        {
-            if(skipmode!=2)
-            {
-                k2 = kh_put(khVerInt, h_lookup, v_lookup, &ret);
-                kh_value(h_lookup, k2)=vid;
-            }
 
-        }
 
 
 
@@ -1137,33 +926,34 @@ parse_vertices (int skipmode)
             if (reader.getch () == reader.delim)
                 break;
 
-            //int aid2;
             aid=reader.getnum();
 
 
-            if(skipmode==1||skipmode==2)
+            if(parsing_position==1||parsing_position==2)
             {
                 aid=kh_value(map_cid_ver,kh_get(khIntInt,map_cid_ver,aid));
             }
 
 
 
-            if(skipmode!=2)
+            if(parsing_position!=2)
             {
-                QRPCERT_PABORT (kh_val(h,kh_get(khIntVer, h, vid)).num_ants >= 2,
-                                "invalid number of antecedents at step '%d'", aid);
+                if(kh_val(h,kh_get(khIntVer, h, vid)).num_ants >= 2){
+                    fprintf(stderr,"wrong number of ants given");
+                }
             }
             else
             {
-                QRPCERT_PABORT (kh_val(cid_backup,kh_get(khIntVer, cid_backup, vid)).num_ants >= 2,
-                                "invalid number of antecedents at step '%d'", aid);
+                if(kh_val(cid_backup,kh_get(khIntVer, cid_backup, vid)).num_ants >= 2){
+                    fprintf(stderr,"wrong number of ants given");
+                }
             }
 
-            vertex_add_antecedent (vid, aid,skipmode);
+            vertex_add_antecedent (vid, aid,parsing_position);
         }
 
         /* empty clause/cube  */
-        if(skipmode!=2)
+        if(parsing_position!=2)
         {
             if (kh_val(h,kh_get(khIntVer, h, vid)).num_lits == 0)
             {
@@ -1263,71 +1053,67 @@ int main(int argc, char **argv)
 
 
     //parse the inputs given to the programm
-    
+
     clock_t t;
     t = clock();
 
     parse_options(argc,argv,NULL,NULL);
-    
-    if(options.qrp==0)
+
+
+    size_t bufferSize_mcreturn = 0;
+    myStream = open_memstream(&buffer_mcreturn, &bufferSize_mcreturn);
+
+    int my_pipe[2];
+    if(pipe(my_pipe) == -1)
     {
+        fprintf(stderr, "Error creating pipe\n");
+    }
+
+    pid_t child_id;
+    child_id = fork();
+    if(child_id == -1)
+    {
+        fprintf(stderr, "Fork error\n");
+    }
+    if(child_id == 0)
+    {
+        close(my_pipe[0]);
+        dup2(my_pipe[1], STDOUT_FILENO);
+        printf("filename %s",options.in_filename);
+
+        char* argv3[] = { "./bin/depqbf", "--no-dynamic-nenofex","--no-qbce-dynamic","--qbce-max-clause-size=0","--incremental-use","--trace=qrp","--dep-man=simple","--traditional-qcdcl", options.in_filename,NULL};
 
 
-        size_t bufferSize_mcreturn = 0;
-        myStream = open_memstream(&buffer_mcreturn, &bufferSize_mcreturn);
+        execv(argv3[0], argv3);
+        fprintf(stderr, "Exec failed\n");
+    }
+    else
+    {
+        close(my_pipe[1]);
 
-        int my_pipe[2];
-        if(pipe(my_pipe) == -1)
+        char reading_buf[10];
+
+        while(read(my_pipe[0], reading_buf, 1) > 0)
         {
-            fprintf(stderr, "Error creating pipe\n");
+            fprintf(myStream,"%s",reading_buf);
         }
+        close(my_pipe[0]);
 
-        pid_t child_id;
-        child_id = fork();
-        if(child_id == -1)
-        {
-            fprintf(stderr, "Fork error\n");
-        }
-        if(child_id == 0)
-        {
-            close(my_pipe[0]);
-            dup2(my_pipe[1], STDOUT_FILENO);
-            printf("filename %s",options.in_filename);
-
-            char* argv3[] = { "./bin/depqbf", "--no-dynamic-nenofex","--no-qbce-dynamic","--qbce-max-clause-size=0","--incremental-use","--trace=qrp","--dep-man=simple","--traditional-qcdcl", options.in_filename,NULL};
-
-
-            execv(argv3[0], argv3);
-            fprintf(stderr, "Exec failed\n");
-        }
-        else
-        {
-            close(my_pipe[1]);
-
-            char reading_buf[10];
-
-            while(read(my_pipe[0], reading_buf, 1) > 0)
-            {
-                fprintf(myStream,"%s",reading_buf);
-            }
-            close(my_pipe[0]);
-            
-            int waitstatus;
-            wait(&waitstatus);
-            return_code = WEXITSTATUS(waitstatus);
-
-        }
-        fclose(myStream);
-        reader.mmap=buffer_mcreturn;
-        reader.mmap_size=bufferSize_mcreturn;
-        reader.getnextch = mmap_getnextch;
+        int waitstatus;
+        wait(&waitstatus);
+        return_code = WEXITSTATUS(waitstatus);
 
     }
-    
+    fclose(myStream);
+    reader.mmap=buffer_mcreturn;
+    reader.mmap_size=bufferSize_mcreturn;
+    reader.getnextch = mmap_getnextch;
+
+
     t = clock() - t;
     double time_taken = ((double)t)/CLOCKS_PER_SEC; // in seconds
 
-    
+
     parse_qrp ();
 
 
@@ -1379,7 +1165,7 @@ int main(int argc, char **argv)
     int j;
     int k;
     int l;
-    
+
     //we now delete vertices that are not connected to the empty vertex
     for (k_loop = kh_begin(h); k_loop != kh_end(h); ++k_loop)
     {
@@ -1434,11 +1220,9 @@ int main(int argc, char **argv)
             }
         }
     }
-    
-    
-    
 
-    //print_parsed_formula();
+
+
 
     //create the solver instance and parse the current vertices
     QDPLL *qdpll = qdpll_create ();
@@ -1732,7 +1516,7 @@ int main(int argc, char **argv)
                             //resize the clausegroups array
                             if(num_clauses<=count_clausegroups)
                             {
-                                QRPCERT_REALLOC (clausegroups, (int)num_clauses*1.5, num_clauses, 0);
+                                REALLOC (clausegroups, (int)num_clauses*1.5, num_clauses, 0);
                                 num_clauses = (int) num_clauses*1.5;
                             }
 
@@ -1918,18 +1702,29 @@ int main(int argc, char **argv)
 
 
         fclose(outstream);      //close the memstream after trace has been writen (this sets the buffer and the size)
-    }else if(mode==1){
+    }
+    else if(mode==1)
+    {
         fprintf(outstream,"p cnf %d %d\n",num_vars,mus_size);
-        if(return_code==20){
+        if(return_code==20)
+        {
             fprintf(outstream,"%s",quantifier_buffer);
-        }else{
+        }
+        else
+        {
             int quantindex=0;
-            for(quantindex=0;quantindex<quantifier_size;quantindex++){
-                if(quantifier_buffer[quantindex]=='e'){
+            for(quantindex=0; quantindex<quantifier_size; quantindex++)
+            {
+                if(quantifier_buffer[quantindex]=='e')
+                {
                     fprintf(outstream,"a");
-                }else if(quantifier_buffer[quantindex]=='a'){
+                }
+                else if(quantifier_buffer[quantindex]=='a')
+                {
                     fprintf(outstream,"e");
-                }else{
+                }
+                else
+                {
                     fprintf(outstream,"%c",quantifier_buffer[quantindex]);
                 }
             }
@@ -1940,7 +1735,8 @@ int main(int argc, char **argv)
         {
             if (kh_exist(initial_vars, k_loop))
             {
-                if(kh_value(initial_vars,k_loop)==1){
+                if(kh_value(initial_vars,k_loop)==1)
+                {
                     Vertex v=kh_value(h,kh_get(khIntVer,h,kh_key(initial_vars,k_loop)));
                     for(j=0; j<v.num_lits; j++)                           //iterate over every literal and print them to stream
                     {
@@ -1964,8 +1760,10 @@ int main(int argc, char **argv)
     if(output_flag==1)
     {
         out = fopen (options.out_filename, "w");
-        QRPCERT_ABORT (out == NULL, "failed to open output file '%s'",
-                       options.out_filename);
+        if(out==NULL){
+            fprintf(stderr,"no output file with name '%s' given",options.out_filename);
+            abort();
+        }
         fprintf(out,"%s",output_buffer);
         fclose(out);
     }
