@@ -1,19 +1,7 @@
 /*  MusExt: Tool for extracting a minimal unsatisfiable core from Q-resolution proofs.
  *
- *  Copyright (c) 2011-2012 Mathias Preiner.
+ *  Copyright (c) 2022-2023 Andreas Plank.
  *
- *  This program is free software: you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation, either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 
@@ -25,13 +13,13 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <sys/mman.h>
-#include "khash.h"
+#include "./libs/khash.h"
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <assert.h>
 #include<sys/wait.h>
-#include "./depqbf_folder/qdpll.h"
-#include "./depqbf_folder/qdpll_internals.h"
+#include "./libs/depqbf/qdpll.h"
+#include "./libs/depqbf/qdpll_internals.h"
 
 
 
@@ -189,9 +177,6 @@ qrp_read_num (void)
     reader.num = 0;
     do
     {
-        //printf("actc=%c\n",reader.ch);
-        //printf("%d\n",reader.ch-'0');
-
         if (!isdigit (reader.ch))
             QRPCERT_PABORT (1, "digit expected");
         reader.num = reader.num * 10 + (reader.ch - '0');
@@ -345,7 +330,6 @@ parse_options (int argc, char **argv, char *path, char* mmap_array)
             QRPCERT_ABORT (fstat (in_mmap_fd, &s) == -1,
                            "failed to get file status of '%s'", str);
             reader.mmap_size = s.st_size;
-            //printf("reader_size = %ld\n",reader.mmap_size);
             reader.mmap = (char *) mmap (0, reader.mmap_size, PROT_READ,
                                          MAP_PRIVATE | MAP_NORESERVE, in_mmap_fd, 0);
             QRPCERT_ABORT (reader.mmap == MAP_FAILED, "failed to mmap input file");
@@ -597,15 +581,8 @@ vertex_init (VertexId id, int skipmode)
     VertexId vid;
     num_vertices++;
     vid = ++num_vertices_total;
-    /*
-        if(vid==12939){
-            printf("skipmode = %d\n",skipmode);
-        }
-        */
-
 
     map_c2v[id] = vid;
-    //printf("new_solverid=%d\n",id);
     if(skipmode==1||skipmode==2)
     {
         khiter_t temp_iterator;
@@ -652,15 +629,9 @@ move_from_backup_to_active(khiter_t k_temp_aid, int skipmode,VertexId aid,Vertex
 {
     unsigned old_size, new_size, pos;
     k_temp_aid=kh_get(khIntVer,cid_backup,aid);
-    if(k_temp_aid!=kh_end(cid_backup))
-    {
-        //printf("gefunden\n");
-    }
-    //printf("suche %d back to life\n",aid);
     khiter_t backup_iter;
     backup_iter=kh_put(khIntVer,h,kh_key(cid_backup,k_temp_aid),&ret);
     kh_value(h,backup_iter)=kh_value(cid_backup,k_temp_aid);
-    //printf("bring %d back to life\n",kh_value(cid_backup,k_temp_aid).id);
 
     if(skipmode==2)
     {
@@ -709,8 +680,6 @@ move_from_backup_to_active(khiter_t k_temp_aid, int skipmode,VertexId aid,Vertex
     {
         aid=kh_val(h,k_temp_aid).ants[i];
         k_temp_aid_2 = kh_get(khIntVer, h, aid);
-        //printf("tempaid = %d vs kh_end = %d\n",k_temp_aid_2,kh_end(h));
-
         if(k_temp_aid_2==kh_end(h))
         {
             move_from_backup_to_active(k_temp_aid_2, skipmode,aid,id);
@@ -723,12 +692,6 @@ move_from_backup_to_active(khiter_t k_temp_aid, int skipmode,VertexId aid,Vertex
 static void
 vertex_add_antecedent (VertexId id, VertexId aid, int skipmode)
 {
-    /*
-    if(id==61570){
-        printf("aid=%d\n",aid);
-    }
-    */
-
     unsigned pos, new_size, old_size;
     khiter_t k_temp, k_temp_aid;
 
@@ -741,24 +704,13 @@ vertex_add_antecedent (VertexId id, VertexId aid, int skipmode)
         assert (kh_val(h,k_temp).num_ants <= 2);
         kh_val(h,k_temp).ants[kh_val(h,k_temp).num_ants] = aid;
         kh_val(h,k_temp).num_ants += 1;
-        //printf("AIDI=%d und %d\n",aid, kh_end(h));
         k_temp_aid = kh_get(khIntVer, h, aid);
-        //printf("tempaid = %d\n",k_temp_aid);
 
         if(k_temp_aid==kh_end(h))
         {
-            //printf("starting\n");
-
             //check if we have already parsed the vertex, we did not need before. If so we have to transfer it from the backup to  the real hash map
             //the setting of the ants is then done by the move function.
             k_temp_aid=move_from_backup_to_active(k_temp_aid, skipmode,aid,id);
-            /*
-            int i;
-            printf("für id =%d\n",kh_val(h,k_temp).id);
-            for(i=0;i<kh_val(h,k_temp_aid).num_ants;i++){
-                printf("ant=%d\n",kh_val(h,k_temp).ants[i]);
-            }
-            */
             return;
 
 
@@ -928,11 +880,6 @@ parse_qrp (void)
         munmap (reader.mmap, reader.mmap_size);
         reader.mmap = NULL;
     }
-    /*
-    if(proof_type == PTYPE_SAT){
-        fprintf(outstream,"r UNSAT");
-    }
-    */
 }
 
 static void
@@ -986,8 +933,6 @@ parse_qsets (void)
     unsigned s_level = 1;
     QType type;
 
-    //stdout_copy = dup(1); //save stdout
-    //fclose(stdout);       //close the real stdout
     quantifierStream = open_memstream(&quantifier_buffer, &quantifier_size);      //the trace output will be saved in the memstream
 
     /* reader.ch contains either '\n' or BQRP_DELIM  */
@@ -999,7 +944,11 @@ parse_qsets (void)
 
         /* get quantifier symbol  */
         reader.getch ();
-        fprintf(quantifierStream,"%c ",reader.ch);
+        if(reader.ch=='e'||reader.ch=='a'){
+            fprintf(quantifierStream,"%c ",reader.ch);
+        }
+
+
 
         if(return_code==20)
         {
@@ -1046,16 +995,6 @@ parse_qsets (void)
 static void
 parse_vertices (int skipmode)
 {
-    /*
-        int k=0;
-        for(k=0;k<23000;k++){
-            reader.getnextch();
-            if(k%1231==0){
-                //printf("c=");
-            }
-            printf("%c",reader.ch);
-        }
-        */
 
 
     VertexId vid, aid;
@@ -1079,10 +1018,8 @@ parse_vertices (int skipmode)
 
 
 
-        //printf("dad=%d",temp_vid);
         vid = vertex_init (temp_vid, skipmode);
 
-        //printf("vid= %d mit skipmode=%d\n",temp_vid,skipmode);
 
         if(skipmode==1)
         {
@@ -1118,6 +1055,7 @@ parse_vertices (int skipmode)
             {
                 if(reader.num > (unsigned) max_var_index)
                 {
+                    //QRPCERT_ABORT(reader.num > (unsigned) max_var_index,"reader nummer %d > max var index%d\n",reader.num,max_var_index);
                     continue;
                 }
             }
@@ -1132,19 +1070,6 @@ parse_vertices (int skipmode)
                                 "free variable '%d' in step '%d' with skipmode '%d' and solver_vid %d", reader.num,
                                 kh_val(h,kh_get(khIntVer, h, vid)).id,skipmode,temp_vid);
             }
-            else
-            {
-                /*
-                    QRPCERT_PABORT (reader.num > (unsigned) max_var_index,
-                                        "invalid literal '%d' in step '%d'",
-                                        reader.lit, kh_val(cid_backup,kh_get(khIntVer, cid_backup, vid)).id);
-
-                    QRPCERT_PABORT (vars[map_var[reader.num]].type == QTYPE_UNDEF,
-                                    "free variable '%d' in step '%d'", reader.num,
-                                    kh_val(cid_backup,kh_get(khIntVer, cid_backup, vid)).id);
-                                    */
-
-            }
 
 
             if (var_lookup[map_var[abs (reader.lit)]] == 1)
@@ -1152,11 +1077,6 @@ parse_vertices (int skipmode)
 
             var_lookup[map_var[abs (reader.lit)]] = 1;
 
-/*
-            if(temp_vid==1038){
-                printf("lit=%d\n",reader.lit);
-            }
-            */
 
             if(return_code==20)
             {
@@ -1255,7 +1175,6 @@ parse_vertices (int skipmode)
         {
             if (kh_val(cid_backup,kh_get(khIntVer, cid_backup, vid)).num_lits == 0)
             {
-                //assert (empty_vertex == 0);
                 empty_vertex = vid;
             }
         }
@@ -1344,13 +1263,12 @@ int main(int argc, char **argv)
 
 
     //parse the inputs given to the programm
-
+    
     clock_t t;
     t = clock();
 
     parse_options(argc,argv,NULL,NULL);
-    //printf("filename %s",options.in_filename);
-
+    
     if(options.qrp==0)
     {
 
@@ -1359,16 +1277,11 @@ int main(int argc, char **argv)
         myStream = open_memstream(&buffer_mcreturn, &bufferSize_mcreturn);
 
         int my_pipe[2];
-        //int my_pipe2[2];
         if(pipe(my_pipe) == -1)
         {
             fprintf(stderr, "Error creating pipe\n");
         }
-        /*if(pipe(my_pipe2) == -1)
-        {
-            fprintf(stderr, "Error creating pipe\n");
-        }
-        */
+
         pid_t child_id;
         child_id = fork();
         if(child_id == -1)
@@ -1378,14 +1291,11 @@ int main(int argc, char **argv)
         if(child_id == 0)
         {
             close(my_pipe[0]);
-            //close(my_pipe2[1]);
             dup2(my_pipe[1], STDOUT_FILENO);
-            //dup2(my_pipe2[0], STDIN_FILENO);
             printf("filename %s",options.in_filename);
-            //char* argv3[] = { "depqbf", "--incremental-use","--trace=qrp","--dep-man=simple","--traditional-qcdcl", options.in_filename,NULL};
-            char* argv3[] = { "depqbf", "--no-dynamic-nenofex","--no-qbce-dynamic","--qbce-max-clause-size=0","--incremental-use","--trace=qrp","--dep-man=simple","--traditional-qcdcl", options.in_filename,NULL};
 
-            //char* argv3[] = { "/home/andreas/Documents/Programming-Projects/C-Projects/QuAPI-stable/build/quapify","/home/andreas/Documents/Programming-Projects/C-Projects/QuAPI-stable/test.dimacs", "-H", "-a 1", "--", "kissat", NULL};
+            char* argv3[] = { "./bin/depqbf", "--no-dynamic-nenofex","--no-qbce-dynamic","--qbce-max-clause-size=0","--incremental-use","--trace=qrp","--dep-man=simple","--traditional-qcdcl", options.in_filename,NULL};
+
 
             execv(argv3[0], argv3);
             fprintf(stderr, "Exec failed\n");
@@ -1393,43 +1303,32 @@ int main(int argc, char **argv)
         else
         {
             close(my_pipe[1]);
-            //close(my_pipe2[0]);
 
             char reading_buf[10];
 
-            //write(my_pipe2[1], buffer,bufferSize);
-            //write(my_pipe2[1], buffer2, bufferSize2);
-            //close(my_pipe2[1]);
             while(read(my_pipe[0], reading_buf, 1) > 0)
             {
                 fprintf(myStream,"%s",reading_buf);
             }
             close(my_pipe[0]);
-
+            
             int waitstatus;
             wait(&waitstatus);
             return_code = WEXITSTATUS(waitstatus);
 
-            //wait(NULL);
         }
         fclose(myStream);
         reader.mmap=buffer_mcreturn;
         reader.mmap_size=bufferSize_mcreturn;
         reader.getnextch = mmap_getnextch;
-        //free(buffer_mcreturn);
+
     }
-    //printf("buffer=%s",reader.mmap);
-
-
+    
     t = clock() - t;
     double time_taken = ((double)t)/CLOCKS_PER_SEC; // in seconds
 
-    //printf("fun() took %f seconds to execute \n", time_taken);
-    //printf("returnstatus = %d\n",return_code);
-
+    
     parse_qrp ();
-
-    //print_parsed_formula();
 
 
 
@@ -1480,8 +1379,7 @@ int main(int argc, char **argv)
     int j;
     int k;
     int l;
-
-
+    
     //we now delete vertices that are not connected to the empty vertex
     for (k_loop = kh_begin(h); k_loop != kh_end(h); ++k_loop)
     {
@@ -1512,34 +1410,11 @@ int main(int argc, char **argv)
                     }
                 }
 
-                /*
-                //go over all vertices with a greater index
-                for (k_loop2 = i; k_loop2 != kh_end(h); ++k_loop2)
-                {
-                    if (kh_exist(h, k_loop2))
-                    {
-
-                        //go over all children of the vertices with greater index than current and reduce the corresponding ants
-                        for(k=0; k<kh_value(h, k_loop2).num_children; k++)
-                        {
-                            for(l=0; l<kh_value(h, kh_get(khIntVer, h, kh_value(h, k_loop2).children[k])).num_ants; l++)
-                            {
-                                if(kh_value(h, kh_get(khIntVer, h, kh_value(h, k_loop2).children[k])).ants[l]==(int)kh_value(h,k_loop2).id)
-                                {
-                                    //kh_value(h, kh_get(khIntVer, h, kh_value(h, k_loop2).children[k])).ants[l]-=1;
-                                }
-                            }
-                        }
-                    }
-                }
-                */
-
 
                 //free the lits and children arrays and delete the vertex from the hash map
                 //get iterator for deletion of lookup entries
                 k2 = kh_get(khVerInt,h_lookup,kh_value(h, kh_get(khIntVer, h, i)));
                 kh_del(khVerInt, h_lookup, k2);
-
 
                 //free the memory of the children and lits array of the vertex to delete
                 free(kh_value(h, kh_get(khIntVer, h, i)).lits);
@@ -1549,16 +1424,19 @@ int main(int argc, char **argv)
                 num_vertices--;
 
                 //if the vertex was an initial one, remove it from the inital vars hash map
-                //if (kh_exist(initial_vars, kh_value(h, kh_get(khIntVer, h, i)).id))
                 if(kh_get(khIntInt,initial_vars,i)!=kh_end(initial_vars))
                 {
                     kh_value(initial_vars, kh_get(khIntInt, initial_vars, kh_value(h, kh_get(khIntVer, h, i)).id))=0;
+                    num_initial_var--;
                 }
                 kh_del(khIntVer, h, kh_get(khIntVer, h, i));        //delete the vertex
 
             }
         }
     }
+    
+    
+    
 
     //print_parsed_formula();
 
@@ -1645,10 +1523,7 @@ int main(int argc, char **argv)
 
 
     //invoke the solver
-
     QDPLLResult res = qdpll_sat (qdpll);
-    //QDPLLResult res;
-    //qdpll_print(qdpll,stdout);
 
 
 
@@ -1665,7 +1540,6 @@ int main(int argc, char **argv)
         {
 
             initial_temp_index = kh_key(initial_vars,k_loop);
-            //printf("+#+#+ START for initial clause %d\n",initial_temp_index);
 
 
             qdpll_reset(qdpll);     //the solver has to be reset for each iteration
@@ -1682,7 +1556,6 @@ int main(int argc, char **argv)
             //skip the initial variable if it was already deleted
             if(kh_value(initial_vars,k_loop)==0)
             {
-                //printf("skipping because already deleted \n");
                 continue;
             }
 
@@ -1711,20 +1584,12 @@ int main(int argc, char **argv)
                 }
             }
 
-            //if(initial_temp_index==519){
-            if(initial_temp_index==568)
-            {
-                //qdpll_print(qdpll,stdout);
-            }
-
 
             char *buffer; //for open_memstream
             size_t size;
             int stdout_copy;
             FILE * stdsave=stdout;
 
-            //stdout_copy = dup(1); //save stdout
-            //fclose(stdout);       //close the real stdout
             FILE * memstream = open_memstream(&buffer, &size);      //the trace output will be saved in the memstream
             stdout=memstream;      //redirect stdout to the memstream
 
@@ -1735,20 +1600,14 @@ int main(int argc, char **argv)
 
             fclose(memstream);      //close the memstream after trace has been writen (this sets the buffer and the size)
 
-            //dup2(stdout_copy,1);    //restore the stdout
-            //close(stdout_copy);
+
 
 
             //reopen stdout
-            /*
-            int fd;
-            fd = open("/dev/tty", O_WRONLY);
-            stdout = fdopen(fd, "w");
-            */
             stdout=stdsave;
 
 
-            //printf("buffer= %s\n",buffer);
+
             //set the source of reader to the newly created buffer array in order to parse the vertex output
             reader.mmap_size = (int) size;
             reader.mmap = buffer;
@@ -1763,22 +1622,12 @@ int main(int argc, char **argv)
 
 
 
-            //printf ("result is: %d\n", res);
             qdpll_reset(qdpll);
-
-            //if(initial_temp_index==519){
-            if(initial_temp_index==568)
-            {
-                //qdpll_print(qdpll,stdout);
-            }
-
 
 
             //check if the restult is SAT and continue accordingly
             if(res==10)
             {
-                //printf("+#+#+ START for initial clause %d\n",initial_temp_index);
-                //printf("SATISFYING\n");
 
                 //if the result is satisfying we know that the vertex was necessary, hence we reactivate the according clause group
                 for(k_loop2=kh_begin(current_cone); k_loop2!=kh_end(current_cone); ++k_loop2)
@@ -1796,8 +1645,6 @@ int main(int argc, char **argv)
             }
             else
             {
-                //printf("+#+#+ START for initial clause %d\n",initial_temp_index);
-                //printf("NOT SATISFYING\n");
 
                 //if the result is not satisfying we know the vertex was not necessary, hence we can remove the vertex and its cone from the tree
                 for(k_loop2=kh_begin(current_cone); k_loop2!=kh_end(current_cone); ++k_loop2)
@@ -1832,28 +1679,6 @@ int main(int argc, char **argv)
                         }
 
 
-                        /*
-                        //go over all vertices with a greater index
-                        for (k_loop3 = kh_begin(h); k_loop3 != kh_end(h); ++k_loop3)
-                        {
-                            if (kh_exist(h, k_loop3))
-                            {
-
-                                //go over all children of the vertices with greater index than current and reduce the corresponding ants (same as before)
-                                for(k=0; k<kh_value(h, k_loop3).num_children; k++)
-                                {
-                                    for(l=0; l<kh_value(h, kh_get(khIntVer, h, kh_value(h, k_loop3).children[k])).num_ants; l++)
-                                    {
-                                        //printf("adafs\n");
-                                        if(kh_value(h, kh_get(khIntVer, h, kh_value(h, k_loop3).children[k])).ants[l]==(int)j)
-                                        {
-                                            //kh_value(h, kh_get(khIntVer, h, kh_value(h, k_loop3).children[k])).ants[l]-=1;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        */
 
 
                         //mark the initial vars in the cone (if there are any) as not necessary
@@ -1864,11 +1689,6 @@ int main(int argc, char **argv)
 
                         //delete the vertex from the hash maps (the vertex hash map and the reverse hash map)
                         int vid = kh_key(current_cone,k_loop2);
-                        /*
-                        if(vid==12939){
-                            printf("delete it \n");
-                        }
-                        */
 
                         khiter_t k_ret;
                         k_ret = kh_get(khIntVer, h, vid);
@@ -1885,8 +1705,7 @@ int main(int argc, char **argv)
                         k2 = kh_get(khVerInt, h_lookup, v_lookup); // get the ieterator
                         if (k2 != kh_end(h_lookup))    // if it is found
                         {
-                            //free(kh_value(h,k_ret).lits);
-                            //free(kh_value(h,k_ret).children);
+
                             kh_del(khVerInt, h_lookup, k2);
                         }
                     }
@@ -1896,7 +1715,7 @@ int main(int argc, char **argv)
                 //if we got a trace we need to parse it
                 if((int)size>0)
                 {
-                    //printf("call den ubeltater\n");
+
                     FILE *fptr;
                     fptr = fopen("./buffer_debug_file","w");
                     fprintf(fptr,"buffer=%s\n",buffer);
@@ -1909,7 +1728,6 @@ int main(int argc, char **argv)
                     {
                         if(kh_exist(new_vertices,k_loop2))
                         {
-                            //printf("new_vert_id=%d\n",kh_key(new_vertices,k_loop2));
 
                             //resize the clausegroups array
                             if(num_clauses<=count_clausegroups)
@@ -1927,8 +1745,6 @@ int main(int argc, char **argv)
                             size_t size2;
                             int stdout_copy2;
                             FILE* stdsave2=stdout;
-                            //stdout_copy2 = dup(1); //save stdout
-                            //fclose(stdout);
                             FILE * memstream2 = open_memstream(&buffer2, &size2);
                             stdout=memstream2;
 
@@ -1948,14 +1764,6 @@ int main(int argc, char **argv)
                             fclose(stdout);
                             stdout=stdsave2;
 
-                            /*dup2(stdout_copy2,1);
-                            close(stdout_copy2);
-
-                            int fd2;
-                            fd2 = open("/dev/tty", O_WRONLY);
-                            stdout = fdopen(fd2, "w");
-                            */
-
 
 
                             //set the source of the reader
@@ -1963,7 +1771,7 @@ int main(int argc, char **argv)
                             reader.mmap = buffer2;
                             reader.mmap_pos = 0;
 
-                            //printf("buffer2=%s\n",buffer2);
+
                             //read the solver instance clause id
                             int cid = reader.getnum();
 
@@ -1977,9 +1785,9 @@ int main(int argc, char **argv)
                                 {
                                     khiter_t temp_iterator;
                                     temp_iterator = kh_put(khIntInt,map_cid_ver,additional_solver_ids,&ret);
-                                    //printf("add cid = %d\n", cid);
+
                                     kh_value(map_cid_ver,temp_iterator)=kh_value(h,kh_get(khIntVer,h,kh_key(new_vertices,k_loop2))).id;
-                                    //printf("%d vs %d\n",old_cid+1,cid);
+
                                 }
                             }
 
@@ -1989,7 +1797,6 @@ int main(int argc, char **argv)
                             //add the solver instance clause id (key) and internal vertex id (value) to the hash map
                             khiter_t temp_iterator;
                             temp_iterator = kh_put(khIntInt,map_cid_ver,cid,&ret);
-                            //printf("add cid = %d\n", cid);
                             kh_value(map_cid_ver,temp_iterator)=kh_value(h,kh_get(khIntVer,h,kh_key(new_vertices,k_loop2))).id;
 
 
@@ -2027,9 +1834,7 @@ int main(int argc, char **argv)
 
 
 
-    //qdpll_print(qdpll,stdout);
     qdpll_reset(qdpll);
-    //printf("res = %d\n",qdpll_sat(qdpll));
     qdpll_delete(qdpll);
 
     int mus_size=0;
@@ -2038,97 +1843,124 @@ int main(int argc, char **argv)
         if (kh_exist(initial_vars, k_loop))
         {
             mus_size +=kh_value(initial_vars,k_loop);
-            /*
-            int id = kh_key(initial_vars,k_loop);
-            if(kh_value(initial_vars,k_loop)==1){
-                print_vertex(&kh_value(h,kh_get(khIntVer,h,id)),id);
-
-                printf("%d vs %d\n",id, kh_value(initial_vars,k_loop));
-            }
-            */
-
 
         }
     }
 
-    //print_parsed_formula();
-    //--------------------------------------------------------------------------------------commented for testing----------------
 
     //following is a part where we output the new qrp
+    int mode = 1;
+
 
     map_id_ants_output = kh_init(khIntInt);
     char *output_buffer; //for open_memstream
     size_t output_size;
-    //stdout_copy = dup(1); //save stdout
-    //fclose(stdout);       //close the real stdout
     FILE * outstream = open_memstream(&output_buffer, &output_size);      //the trace output will be saved in the memstream
     int ind=0;
-    fprintf(outstream,"p qrp %d %d\n",num_vars,mus_size);
-    fprintf(outstream,"%s",quantifier_buffer);
-    for (k_loop = kh_begin(h); k_loop != kh_end(h); ++k_loop)
+
+
+
+    if(mode==0)
     {
-        if (kh_exist(h, k_loop))
+        fprintf(outstream,"p qrp %d %d\n",num_vars,mus_size);
+        fprintf(outstream,"%s",quantifier_buffer);
+        for (k_loop = kh_begin(h); k_loop != kh_end(h); ++k_loop)
         {
-            ind++;
-            int id = kh_key(h,k_loop);
-            //printf("id=%d\n ",id);
-
-            khiter_t temp_iterator;
-            temp_iterator = kh_put(khIntInt,map_id_ants_output,id,&ret);
-            kh_value(map_id_ants_output,temp_iterator)=ind;
-            //printf("fetched id = %d\n",kh_value(map_id_ants_output,kh_get(khIntInt,map_id_ants_output,id)));
-
-            //printf("value=%d",kh_value(h,k_loop).id);
-            //printf("value2=%d\n",kh_value(h,kh_get(khIntVer,h,id)));
-
-            //printf("\n id = %d\n",id);
-            //print_vertex(&kh_value(h,kh_get(khIntVer,h,id)),id);
-            //print_vertex(&kh_value(h,k_loop),id);
-            fprintf(outstream,"%d ",ind);
-            for(j=0; j<kh_value(h, k_loop).num_lits; j++)                           //iterate over every literal and print them to stream
+            if (kh_exist(h, k_loop))
             {
-                long temp_lit=0;
-                if(kh_value(h,k_loop).lits[j] < 0)
-                {
-                    temp_lit=-vars[-kh_value(h,k_loop).lits[j]].id;
-                }
-                else
-                {
-                    temp_lit=vars[kh_value(h,k_loop).lits[j]].id;
-                }
-                if(return_code==10){
-                    temp_lit=temp_lit*1;
-                }
-                fprintf(outstream,"%ld ",temp_lit);
-            }
-            fprintf(outstream,"0 ");
-            for(j=0; j<kh_value(h, k_loop).num_ants; j++)                           //iterate over every literal and print them to stream
-            {
-                int temp_lit2=kh_value(h,k_loop).ants[j];
-                //fprintf(outstream,"%ld ",temp_lit2);
-                int temp_lit3;
-                khiter_t zwischenschritt=kh_get(khIntInt,map_id_ants_output,temp_lit2);
-                //printf("key1=%d\n",temp_lit2);
-                //printf("value=%d\n",kh_value(map_id_ants_output,zwischenschritt));
-                temp_lit3=kh_value(map_id_ants_output,zwischenschritt);
-                fprintf(outstream,"%ld ",temp_lit3);
-            }
-            fprintf(outstream,"0\n");
+                ind++;
+                int id = kh_key(h,k_loop);
 
+                khiter_t temp_iterator;
+                temp_iterator = kh_put(khIntInt,map_id_ants_output,id,&ret);
+                kh_value(map_id_ants_output,temp_iterator)=ind;
+
+                fprintf(outstream,"%d ",ind);
+                for(j=0; j<kh_value(h, k_loop).num_lits; j++)                           //iterate over every literal and print them to stream
+                {
+                    long temp_lit=0;
+                    if(kh_value(h,k_loop).lits[j] < 0)
+                    {
+                        temp_lit=-vars[-kh_value(h,k_loop).lits[j]].id;
+                    }
+                    else
+                    {
+                        temp_lit=vars[kh_value(h,k_loop).lits[j]].id;
+                    }
+                    if(return_code==10)
+                    {
+                        temp_lit=temp_lit*1;
+                    }
+                    fprintf(outstream,"%ld ",temp_lit);
+                }
+                fprintf(outstream,"0 ");
+                for(j=0; j<kh_value(h, k_loop).num_ants; j++)                           //iterate over every literal and print them to stream
+                {
+                    int temp_lit2=kh_value(h,k_loop).ants[j];
+
+                    int temp_lit3;
+                    khiter_t zwischenschritt=kh_get(khIntInt,map_id_ants_output,temp_lit2);
+                    temp_lit3=kh_value(map_id_ants_output,zwischenschritt);
+                    fprintf(outstream,"%ld ",temp_lit3);
+                }
+                fprintf(outstream,"0\n");
+
+            }
         }
-    }
-    if(proof_type == PTYPE_UNSAT)
-    {
-        fprintf(outstream,"r UNSAT");
-    }
-    else
-    {
-        fprintf(outstream,"r SAT");
-    }
+        if(proof_type == PTYPE_UNSAT)
+        {
+            fprintf(outstream,"r UNSAT");
+        }
+        else
+        {
+            fprintf(outstream,"r SAT");
+        }
 
 
-    fclose(outstream);      //close the memstream after trace has been writen (this sets the buffer and the size)
-    //printf("%s",output_buffer);
+        fclose(outstream);      //close the memstream after trace has been writen (this sets the buffer and the size)
+    }else if(mode==1){
+        fprintf(outstream,"p cnf %d %d\n",num_vars,mus_size);
+        if(return_code==20){
+            fprintf(outstream,"%s",quantifier_buffer);
+        }else{
+            int quantindex=0;
+            for(quantindex=0;quantindex<quantifier_size;quantindex++){
+                if(quantifier_buffer[quantindex]=='e'){
+                    fprintf(outstream,"a");
+                }else if(quantifier_buffer[quantindex]=='a'){
+                    fprintf(outstream,"e");
+                }else{
+                    fprintf(outstream,"%c",quantifier_buffer[quantindex]);
+                }
+            }
+        }
+
+
+        for (k_loop = kh_begin(initial_vars); k_loop != kh_end(initial_vars); ++k_loop)
+        {
+            if (kh_exist(initial_vars, k_loop))
+            {
+                if(kh_value(initial_vars,k_loop)==1){
+                    Vertex v=kh_value(h,kh_get(khIntVer,h,kh_key(initial_vars,k_loop)));
+                    for(j=0; j<v.num_lits; j++)                           //iterate over every literal and print them to stream
+                    {
+                        long temp_lit=0;
+                        if(v.lits[j] < 0)
+                        {
+                            temp_lit=-vars[-v.lits[j]].id;
+                        }
+                        else
+                        {
+                            temp_lit=vars[v.lits[j]].id;
+                        }
+                        fprintf(outstream,"%ld ",temp_lit);
+                    }
+                    fprintf(outstream,"0\n");
+                }
+            }
+        }
+        fclose(outstream);
+    }
     if(output_flag==1)
     {
         out = fopen (options.out_filename, "w");
@@ -2149,179 +1981,12 @@ int main(int argc, char **argv)
 
 
     kh_destroy(khIntInt, initial_vars);
-    /*
-    for (k_loop = kh_begin(deactivated_clausegroups); k_loop != kh_end(deactivated_clausegroups); ++k_loop)
-    {
-        if (kh_exist(deactivated_clausegroups, k_loop))
-        {
-            printf("deac = %d\n",kh_key(deactivated_clausegroups,k_loop));
-        }
-    }
-    */
+
     kh_destroy(khInt, deactivated_clausegroups);
-    //printf("cid = %d vs vid = %d\n",266,kh_value(map_cid_ver,kh_get(khIntInt,map_cid_ver,266)));
-    //printf("cid = %d vs vid = %d\n",2917,kh_value(map_cid_ver,kh_get(khIntInt,map_cid_ver,2917)));
-    //printf("cid = %d vs vid = %d\n",2918,kh_value(map_cid_ver,kh_get(khIntInt,map_cid_ver,2918)));
     free(buffer_mcreturn);
 
-    printf("mus size = %d\n", mus_size);
-    //print_parsed_formula();
-
-
-/*
-    if(0)
-    {
-        //FILE* ptr = fopen("fileopen","mode");
-        //printf("filename = %s\n",options.in_filename);
-        //printf("filecropped= %s\n",strrchr(options.in_filename,'/')+1);
-        char* prefix=strrchr(options.in_filename,'/')+1;
-        //printf("filefinished= %s\n",prefix);
-        char musext_proof_name[100] = "musext_proof_";
-        char musext_aiger_name[100] = "musext_aiger_";
-        char proof_filename[]=".qrp";
-        char aiger_filename[]=".qrp";
-        strncat(musext_proof_name,prefix,50);
-        strncat(musext_proof_name,proof_filename,100);
-        strncat(musext_aiger_name,prefix,50);
-        strncat(musext_aiger_name,aiger_filename,100);
-
-        printf("concatenated = %s\n", musext_proof_name);
-        printf("concatenated = %s\n", musext_aiger_name);
-
-        FILE* proof_file = fopen(musext_proof_name,"w");
-        fprintf(proof_file,"%s",output_buffer);
-        fclose(proof_file);
-
-
-
-        char *musext_proof_buffer; //for open_memstream
-        size_t musext_proof_size;
-        //stdout_copy = dup(1); //save stdout
-        //fclose(stdout);       //close the real stdout
-        FILE * musext_proof_stream = open_memstream(&musext_proof_buffer, &musext_proof_size);      //the trace output will be saved in the memstream
-
-        int musext_proof_pipe[2];
-        //int musext_proof_pipe2[2];
-        //int my_pipe2[2];
-        if(pipe(musext_proof_pipe) == -1)
-        {
-            fprintf(stderr, "Error creating pipe\n");
-        }
-
-        pid_t child_id;
-        child_id = fork();
-        if(child_id == -1)
-        {
-            fprintf(stderr, "Fork error\n");
-        }
-
-        int saved_stdout = dup(1);
-        if(child_id == 0)
-        {
-            close(musext_proof_pipe[0]);
-            //close(musext_proof_pipe2[1]);
-            dup2(musext_proof_pipe[1], STDOUT_FILENO);
-            //dup2(musext_proof_pipe2[1], STDIN_FILENO);
-            printf("filename %s",options.in_filename);
-            char* argv3[] = { "/home/andreas/Documents/GitLabProjects/l2counting/code/count-l2/bin/qrpcheck", musext_proof_name,"-p",NULL};
-
-            execv(argv3[0], argv3);
-            fprintf(stderr, "Exec failed\n");
-        }
-        else
-        {
-            close(musext_proof_pipe[1]);
-            //close(musext_proof_pipe2[0]);
-
-            //write(musext_proof_pipe2[1], output_buffer,output_size);
-            //close(musext_proof_pipe2[1]);
-
-            char reading_buf[10];
-
-            while(read(musext_proof_pipe[0], reading_buf, 1) > 0)
-            {
-                fprintf(musext_proof_stream,"%s",reading_buf);
-            }
-            close(musext_proof_pipe[0]);
-
-            wait(NULL);
-
-            //wait(NULL);
-        }
-        dup2(saved_stdout, 1);
-        fclose(musext_proof_stream);
-        printf("ddd=%s\n",musext_proof_buffer);
-
-        FILE* aiger_file = fopen(musext_aiger_name,"w");
-        fprintf(aiger_file,"%s",musext_proof_buffer);
-        fclose(aiger_file);
-
-
-
-        char *musext_aiger_buffer; //for open_memstream
-        size_t musext_aiger_size;
-        //stdout_copy = dup(1); //save stdout
-        //fclose(stdout);       //close the real stdout
-        FILE * musext_aiger_stream = open_memstream(&musext_aiger_buffer, &musext_aiger_size);      //the trace output will be saved in the memstream
-
-        int musext_aiger_pipe[2];
-        //int musext_proof_pipe2[2];
-        //int my_pipe2[2];
-        if(pipe(musext_aiger_pipe) == -1)
-        {
-            fprintf(stderr, "Error creating pipe\n");
-        }
-
-
-        pid_t child_id2;
-        child_id2 = fork();
-        if(child_id2 == -1)
-        {
-            fprintf(stderr, "Fork error\n");
-        }
-
-        saved_stdout = dup(1);
-        if(child_id2 == 0)
-        {
-            close(musext_aiger_pipe[0]);
-            //close(musext_proof_pipe2[1]);
-            dup2(musext_aiger_pipe[1], STDOUT_FILENO);
-            //dup2(musext_proof_pipe2[1], STDIN_FILENO);
-            printf("filename %s",options.in_filename);
-            char* argv3[] = { "/home/andreas/Documents/GitLabProjects/l2counting/code/count-l2/bin/qrpcert", musext_aiger_name,"--aiger-ascii",NULL};
-
-            execv(argv3[0], argv3);
-            fprintf(stderr, "Exec failed\n");
-        }
-        else
-        {
-            close(musext_aiger_pipe[1]);
-            //close(musext_proof_pipe2[0]);
-
-            //write(musext_proof_pipe2[1], output_buffer,output_size);
-            //close(musext_proof_pipe2[1]);
-
-            char reading_buf[10];
-
-            while(read(musext_aiger_pipe[0], reading_buf, 1) > 0)
-            {
-                fprintf(musext_aiger_stream,"%s",reading_buf);
-            }
-            close(musext_aiger_pipe[0]);
-
-            wait(NULL);
-
-            //wait(NULL);
-        }
-        dup2(saved_stdout, 1);
-        fclose(musext_aiger_stream);
-        printf("final = %s\n",musext_aiger_buffer);
-        free(musext_proof_buffer);
-        free(musext_aiger_buffer);
-    }
-
-    free(output_buffer);
-*/
+    //printf("mus size = %d\n", mus_size);
+    printf("mus size = %d\n", num_initial_var);
 
 
 

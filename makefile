@@ -7,13 +7,13 @@ CFLAGSDEF=  -Wall -g
 all: debug
 
 opt: musext.c 
-	${CC} ${CFLAGSDEF} musext.c -o musext -L./depqbf_folder -lqdpll
+	${CC} ${CFLAGSDEF} musext.c -o musext -L./libs/depqbf -lqdpll
 
 debug: musext.c
-	${CC} ${CFLAGSDEF} ${ASAN_FLAGS} musext.c -o musext -L./depqbf_folder -lqdpll
+	${CC} ${CFLAGSDEF} ${ASAN_FLAGS} musext.c -o musext -L./libs/depqbf -lqdpll
 	
 Debug: musext.c
-	${CC} ${CFLAGSDEF} ${ASAN_FLAGS} musext.c -o ./bin/Debug/MusExt -L./depqbf_folder -lqdpll
+	${CC} ${CFLAGSDEF} ${ASAN_FLAGS} musext.c -o ./bin/Debug/MusExt -L./libs/depqbf -lqdpll
 
 clean:
 	rm -f *.o
