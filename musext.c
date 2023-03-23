@@ -64,8 +64,8 @@ static QParser parser =
     .getlit = qrp_read_lit,
     .filename = "stdin",
     .mmap = NULL,
-    .mmap_size = 0,
-    .mmap_pos = 0,
+    .inputmap_size = 0,
+    .inputmap_pos = 0,
 };
 
 /* QRPcert default options  */
@@ -91,11 +91,12 @@ stdin_getnextch (void)
 
     if (parser.ch == '\n')
     {
-        parser.line += 1;
+
         parser.col = 0;
+        parser.line = parser.line + 1;
     }
     else
-        parser.col += 1;
+        parser.col =parser.col +1;
 
     return parser.ch;
 }
@@ -103,18 +104,19 @@ stdin_getnextch (void)
 static int
 mmap_getnextch (void)
 {
-    if (parser.mmap_pos == parser.mmap_size)
+    if (parser.inputmap_pos == parser.inputmap_size)
         parser.ch = EOF;
     else
-        parser.ch = (unsigned char) parser.mmap[parser.mmap_pos++];
+        parser.ch = (unsigned char) parser.mmap[parser.inputmap_pos++];
 
     if (parser.ch == '\n')
     {
-        parser.line += 1;
+
         parser.col = 0;
+        parser.line = parser.line + 1;
     }
     else
-        parser.col += 1;
+        parser.col = parser.col + 1;
 
     return parser.ch;
 }
@@ -234,8 +236,8 @@ parse_options (int argc, char **argv, char *path, char* mmap_array)
                 abort();
             }
             fstat (in_mmap_fd, &s);
-            parser.mmap_size = s.st_size;
-            parser.mmap = (char *) mmap (0, parser.mmap_size, PROT_READ,
+            parser.inputmap_size = s.st_size;
+            parser.mmap = (char *) mmap (0, parser.inputmap_size, PROT_READ,
                                          MAP_PRIVATE | MAP_NORESERVE, in_mmap_fd, 0);
             close (in_mmap_fd);
 
@@ -678,7 +680,7 @@ parse_qrp (void)
 
     if (parser.mmap != NULL)
     {
-        munmap (parser.mmap, parser.mmap_size);
+        munmap (parser.mmap, parser.inputmap_size);
         parser.mmap = NULL;
     }
 }
@@ -1082,7 +1084,7 @@ int main(int argc, char **argv)
     }
     fclose(myStream);
     parser.mmap=buffer_mcreturn;
-    parser.mmap_size=bufferSize_mcreturn;
+    parser.inputmap_size=bufferSize_mcreturn;
     parser.getnextch = mmap_getnextch;
 
 
@@ -1366,9 +1368,9 @@ int main(int argc, char **argv)
 
 
             //set the source of parser to the newly created buffer array in order to parse the vertex output
-            parser.mmap_size = (int) size;
+            parser.inputmap_size = (int) size;
             parser.mmap = buffer;
-            parser.mmap_pos = 0;
+            parser.inputmap_pos = 0;
 
             //save trace in case vertex is reused, this is important as the solver also takes these ids into consideration when giving out new ids
             if(res==10)
@@ -1523,9 +1525,9 @@ int main(int argc, char **argv)
 
 
                             //set the source of the parser
-                            parser.mmap_size = (int) size2;
+                            parser.inputmap_size = (int) size2;
                             parser.mmap = buffer2;
-                            parser.mmap_pos = 0;
+                            parser.inputmap_pos = 0;
 
 
                             //read the solver instance clause id

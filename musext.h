@@ -83,8 +83,8 @@
       int (*getlit)(void);
       char *filename;
       char *mmap;
-      size_t mmap_size;
-      unsigned long mmap_pos;
+      size_t inputmap_size;
+      unsigned long inputmap_pos;
     } QParser;
 
 
