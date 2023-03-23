@@ -63,8 +63,6 @@
 
   typedef struct
     {
-      unsigned line;
-      unsigned col;
       int ch;
       int delimiter;
       unsigned num;
