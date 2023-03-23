@@ -60,15 +60,14 @@ static QParser parser =
     .delimiter= '0',
     .get_cur_ch = get_non_ws_ch,
     .getnextch = stdin_getnextch,
-    .getnum = qrp_read_num,
-    .getlit = qrp_read_lit,
+    .getnum = getnum_function,
+    .getlit = getlit_function,
     .filename = "stdin",
     .mmap = NULL,
     .inputmap_size = 0,
     .inputmap_pos = 0,
 };
 
-/* QRPcert default options  */
 static Options options =
 {
     .out_filename = NULL,
@@ -124,7 +123,7 @@ mmap_getnextch (void)
 
 
 static unsigned
-qrp_read_num (void)
+getnum_function (void)
 {
     if (!isdigit (parser.ch))
         parser.get_cur_ch ();
@@ -139,13 +138,13 @@ qrp_read_num (void)
         parser.num = parser.num * 10 + (parser.ch - '0');
     }
     while (!isspace (parser.getnextch ()) &&
-            (!0 || parser.ch != 0));
+            (parser.ch != 0));
 
     return parser.num;
 }
 
 static int
-qrp_read_lit (void)
+getlit_function (void)
 {
     int neg;
 
@@ -351,7 +350,7 @@ static khiter_t k2;
 
 
 static void
-var_init (int id, int type, int s_level)
+new_var (int id, int type, int s_level)
 {
 
     if (id > max_var_index)
@@ -379,7 +378,7 @@ var_init (int id, int type, int s_level)
 }
 
 static int
-vertex_init (int id, int parsing_position)
+new_vertex (int id, int parsing_position)
 {
 
     assert (map_c2v != NULL);
@@ -466,11 +465,6 @@ move_from_backup_to_active(khiter_t k_temp_aid, int parsing_position,int aid,int
 
     assert (kh_val(h,k_temp_aid).num_children + 1 <= kh_val(h,k_temp_aid).children_size);
 
-    /*
-        pos = kh_val(h,k_temp_aid).num_children;
-        kh_val(h,k_temp_aid).children[pos] = temp_id;
-        kh_val(h,k_temp_aid).num_children += 1;
-        */
 
     if (kh_val(h,k_temp_aid).children_size == kh_val(h,k_temp_aid).num_children)
     {
@@ -662,17 +656,17 @@ parse_qrp (void)
     parser.get_cur_ch = get_non_ws_ch;
 
     /* parse result line  */
-    if(parser.ch != QRP_RESULT)
+    if(parser.ch != 'r')
     {
         fprintf(stderr,"I expected a result!");
         abort();
     };
 
-    if (tolower (parser.get_cur_ch ()) == QRP_RESULT_S)
+    if (tolower (parser.get_cur_ch ()) == 's')
     {
         proof_type = 1;
     }
-    else if (tolower (parser.ch) == QRP_RESULT_U)
+    else if (tolower (parser.ch) == 'u')
     {
         proof_type = 2;
     }
@@ -701,20 +695,20 @@ parse_preamble (int *max_var_index, int *max_vertex_index)
     };
 
     /* skip comments  */
-    while (parser.ch == QRP_COMMENT)
+    while (parser.ch == '#')
     {
         while (parser.getnextch () != '\n' && parser.ch != EOF);
         parser.get_cur_ch ();
     }
 
     /* preamble  */
-    if(parser.ch != QRP_PREAMBLE)
+    if(parser.ch != 'p')
     {
         fprintf(stderr,"Preamble missing");
         abort();
     };
 
-    str = QRP_PREAMBLE_QRP;
+    str = "qrp";
     for (i = 0; str[i] != '\0'; i++)
     {
         parser.get_cur_ch ();
@@ -773,7 +767,7 @@ parse_qsets (void)
         {
             int newlit=parser.getnum();
             fprintf(quantifierStream,"%d ",newlit);
-            var_init (newlit, type, s_level);
+            new_var (newlit, type, s_level);
         }
         fprintf(quantifierStream,"0\n");
 
@@ -814,7 +808,7 @@ parse_vertices (int parsing_position)
 
 
 
-        vid = vertex_init (temp_vid, parsing_position);
+        vid = new_vertex (temp_vid, parsing_position);
 
 
         if(parsing_position==1)
@@ -953,13 +947,13 @@ parse_vertices (int parsing_position)
         /* parser.ch contains parser.delimiter  */
         parser.get_cur_ch ();
 
-        if ((!0 && parser.ch == QRP_RESULT) || parser.ch == EOF)
+        if ((parser.ch == 'r') || parser.ch == EOF)
             break;
 
         /* check for binary result statement  */
         if (0 && parser.ch == parser.delimiter)
         {
-            if (parser.get_cur_ch () == QRP_RESULT || parser.ch == EOF)
+            if (parser.get_cur_ch () == 'r' || parser.ch == EOF)
                 break;
         }
     }

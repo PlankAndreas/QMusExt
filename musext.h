@@ -8,14 +8,6 @@
   #include <stdio.h>
   #include <sys/unistd.h>
 
-  #define QRP_COMMENT '#'
-  #define QRP_PREAMBLE 'p'
-  #define QRP_PREAMBLE_QRP "qrp"
-  #define QRP_RESULT_S 's'
-  #define QRP_RESULT 'r'
-  #define QRP_RESULT_SAT "sat"
-  #define QRP_RESULT_U 'u'
-  #define QRP_RESULT_UNSAT "unsat"
 
   #define REALLOC(address, new_value, old_value, mem_val)                             \
     do                                                                      \
@@ -30,8 +22,8 @@
   static int get_non_ws_ch (void);
   static int stdin_getnextch (void);
   static int mmap_getnextch (void);
-  static unsigned qrp_read_num (void);
-  static int qrp_read_lit (void);
+  static unsigned getnum_function (void);
+  static int getlit_function (void);
 
 
   static void parse_qrp (void);
