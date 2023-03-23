@@ -197,13 +197,13 @@ static void
 parse_options (int argc, char **argv, char *path, char* mmap_array)
 {
     int i;
-    char *str;
+    char *option;
 
     for  (i = 1; i < argc; i++)
     {
-        str = argv[i];
+        option = argv[i];
 
-        if (strcmp (str, "-o") == 0)
+        if (strcmp (option, "-o") == 0)
         {
             if(i + 1 >= argc){
                 fprintf(stderr,"no -o filename given");
@@ -218,7 +218,7 @@ parse_options (int argc, char **argv, char *path, char* mmap_array)
 
         }
 
-        else if (str[0] == '-')
+        else if (option[0] == '-')
         {
             fprintf(stderr, "no option given");
             abort();
@@ -227,9 +227,9 @@ parse_options (int argc, char **argv, char *path, char* mmap_array)
         {
             int in_mmap_fd;
             struct stat s;
-            options.in_filename=str;
+            options.in_filename=option;
 
-            in_mmap_fd = open (str, O_RDONLY);
+            in_mmap_fd = open (option, O_RDONLY);
             if(in_mmap_fd==-1){
                 fprintf(stderr,"input file not opened");
                 abort();
@@ -241,7 +241,7 @@ parse_options (int argc, char **argv, char *path, char* mmap_array)
             close (in_mmap_fd);
 
             parser.getnextch = mmap_getnextch;
-            parser.filename = str;
+            parser.filename = option;
         }
     }
 
@@ -653,7 +653,6 @@ parse_qrp (void)
     parse_qsets ();
     parse_vertices (0);
 
-    parser.get_cur_ch = get_non_ws_ch;
 
     /* parse result line  */
     if(parser.ch != 'r')
