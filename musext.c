@@ -55,8 +55,6 @@ static int max_var_index = 0;
 
 static QParser parser =
 {
-    .line = 1,
-    .col = 0,
     .delimiter= '0',
     .get_cur_ch = get_non_ws_ch,
     .getnextch = stdin_getnextch,
@@ -87,16 +85,6 @@ static int
 stdin_getnextch (void)
 {
     parser.ch = getc (stdin);
-
-    if (parser.ch == '\n')
-    {
-
-        parser.col = 0;
-        parser.line = parser.line + 1;
-    }
-    else
-        parser.col =parser.col +1;
-
     return parser.ch;
 }
 
@@ -107,15 +95,6 @@ mmap_getnextch (void)
         parser.ch = EOF;
     else
         parser.ch = (unsigned char) parser.mmap[parser.inputmap_pos++];
-
-    if (parser.ch == '\n')
-    {
-
-        parser.col = 0;
-        parser.line = parser.line + 1;
-    }
-    else
-        parser.col = parser.col + 1;
 
     return parser.ch;
 }
